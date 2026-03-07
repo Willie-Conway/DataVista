@@ -702,7 +702,7 @@ export default function DataVista() {
               Data<span style={{color:scheme.accent}}>Vista</span>
             </div>
             <p style={{ color:T.textSub, fontSize:14, marginTop:8, fontWeight:400 }}>
-              {authMode==="login" ? "Sign in to continue where you left off" : "Create your free analytics account"}
+              {authMode==="login" ? "Turn raw data into decisions, instantly and beautifully" : "Create your free analytics account"}
             </p>
           </div>
 
