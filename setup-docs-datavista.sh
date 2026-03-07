@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "í³Š Setting up DataVista with docs folder for GitHub Pages..."
+echo "ï¿½ï¿½ï¿½ Setting up DataVista with docs folder for GitHub Pages..."
 
 # Create directories
 mkdir -p public src .github/workflows
@@ -11,7 +11,7 @@ cat > package.json << 'PKG'
   "name": "datavista-app",
   "version": "1.0.0",
   "private": true,
-  "homepage": "https://willie-conway.github.io/datavista-app",
+  "homepage": "https://willie-conway.github.io/DataVista",
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -91,12 +91,12 @@ echo "âœ… Created GitHub Actions workflow"
 # Create deploy helper script
 cat > deploy-docs.sh << 'SCRIPT'
 #!/bin/bash
-echo "íº€ Deploying to GitHub Pages..."
+echo "ï¿½ï¿½ï¿½ Deploying to GitHub Pages..."
 npm run build
 git add -f docs/
 git commit -m "Update docs folder"
 git push origin main
-echo "âœ… Done! Check https://willie-conway.github.io/datavista-app in 2-3 minutes"
+echo "âœ… Done! Check https://willie-conway.github.io/DataVista in 2-3 minutes"
 SCRIPT
 chmod +x deploy-docs.sh
 echo "âœ… Created deploy-docs.sh helper"

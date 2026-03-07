@@ -2,7 +2,7 @@
   "name": "datavista-app",
   "version": "1.0.0",
   "private": true,
-  "homepage": "https://willie-conway.github.io/datavista-app",
+  "homepage": "https://willie-conway.github.io/DataVista",
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
