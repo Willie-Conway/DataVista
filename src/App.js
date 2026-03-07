@@ -177,22 +177,44 @@ export default function DataVista() {
   const [profileEditing, setProfileEditing] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [usageLog, setUsageLog] = useState({});
+  const [booted, setBooted] = useState(false);
   const fileRef = useRef();
   const avatarRef = useRef();
   const settingsRef = useRef();
+  // Keep a ref to datasets so async callbacks always see the latest value
+  const datasetsRef = useRef(datasets);
+  useEffect(() => { datasetsRef.current = datasets; }, [datasets]);
 
   const scheme = COLOR_SCHEMES[schemeKey];
 
-  // ── Boot ──────────────────────────────────────────────────────────────────────
+  // ── Boot — restore full session ───────────────────────────────────────────────
   useEffect(() => {
     (async () => {
       const u = await store.get("dv-user");
-      if (u) {
+      if (u && u.id) {
         setUser(u);
         setProfile(u.profile || { name:"", email:"", role:"Data Analyst", bio:"", avatar:"" });
         const ds = await store.get(`dv-datasets-${u.id}`);
-        if (ds) setDatasets(ds);
+        const loadedDs = ds || [];
+        setDatasets(loadedDs);
+        datasetsRef.current = loadedDs;
+
+        // FIX: restore last tab and selected dataset
+        const session = await store.get(`dv-session-${u.id}`);
+        if (session) {
+          if (session.tab) setTab(session.tab);
+          if (session.selectedDsId && loadedDs.length) {
+            const found = loadedDs.find(d => d.id === session.selectedDsId);
+            if (found) setSelectedDs(found);
+          }
+          if (session.statsData) setStatsData(session.statsData);
+          if (session.mlConfig) setMlConfig(session.mlConfig);
+          if (session.hypoConfig) setHypoConfig(session.hypoConfig);
+          if (session.chartData) setChartData(session.chartData);
+          if (session.vizConfig) setVizConfig(session.vizConfig);
+        }
       }
+
       const s = await store.get("dv-settings");
       if (s) {
         if (s.isDark !== undefined) setIsDark(s.isDark);
@@ -200,8 +222,23 @@ export default function DataVista() {
       }
       const ul = await store.get("dv-usage") || {};
       setUsageLog(ul);
+      setBooted(true);
     })();
   }, []);
+
+  // ── Persist session state on every meaningful change ──────────────────────────
+  useEffect(() => {
+    if (!user || !booted) return;
+    store.set(`dv-session-${user.id}`, {
+      tab,
+      selectedDsId: selectedDs?.id || null,
+      statsData,
+      mlConfig,
+      hypoConfig,
+      chartData: chartData.slice(0, 200), // cap size
+      vizConfig,
+    });
+  }, [tab, selectedDs, statsData, mlConfig, hypoConfig, chartData, vizConfig, user, booted]);
 
   // ── Close settings panel on outside click ─────────────────────────────────────
   useEffect(() => {
@@ -212,7 +249,7 @@ export default function DataVista() {
 
   // ── Track tab usage by day ─────────────────────────────────────────────────────
   useEffect(() => {
-    if (!user) return;
+    if (!user || !booted) return;
     const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
     const today = days[new Date().getDay()];
     setUsageLog(prev => {
@@ -220,7 +257,7 @@ export default function DataVista() {
       store.set("dv-usage", updated);
       return updated;
     });
-  }, [tab, user]);
+  }, [tab, user, booted]);
 
   // ── Toast ──────────────────────────────────────────────────────────────────────
   const notify = (msg, type = "success") => {
@@ -236,9 +273,9 @@ export default function DataVista() {
     await store.set("dv-settings", next);
   };
 
-  // ── Auth ──────────────────────────────────────────────────────────────────────
-  async function handleAuth(e) {
-    e.preventDefault(); setAuthError("");
+  // ── Auth — FIX: removed <form>/onSubmit, now plain async function ──────────────
+  async function handleAuth() {
+    setAuthError("");
     const accounts = await store.get("dv-accounts") || [];
     if (authMode === "login") {
       const found = accounts.find(a => a.email === authFields.email && a.password === authFields.password);
@@ -247,9 +284,27 @@ export default function DataVista() {
       setUser(u); await store.set("dv-user", u);
       setProfile(found.profile || { name:found.name, email:found.email, role:"Data Analyst", bio:"", avatar:"" });
       const ds = await store.get(`dv-datasets-${found.id}`);
-      if (ds) setDatasets(ds);
+      const loadedDs = ds || [];
+      setDatasets(loadedDs);
+      datasetsRef.current = loadedDs;
+
+      // Restore session after login
+      const session = await store.get(`dv-session-${found.id}`);
+      if (session) {
+        if (session.tab) setTab(session.tab);
+        if (session.selectedDsId && loadedDs.length) {
+          const found2 = loadedDs.find(d => d.id === session.selectedDsId);
+          if (found2) setSelectedDs(found2);
+        }
+        if (session.statsData) setStatsData(session.statsData);
+        if (session.mlConfig) setMlConfig(session.mlConfig);
+        if (session.hypoConfig) setHypoConfig(session.hypoConfig);
+        if (session.chartData) setChartData(session.chartData);
+        if (session.vizConfig) setVizConfig(session.vizConfig);
+      }
       notify(`Welcome back, ${found.name}!`);
     } else {
+      if (!authFields.name || !authFields.email || !authFields.password) { setAuthError("All fields required."); return; }
       if (accounts.find(a => a.email === authFields.email)) { setAuthError("Email already registered."); return; }
       const na = { id:Date.now(), name:authFields.name, email:authFields.email, password:authFields.password, profile:{ name:authFields.name, email:authFields.email, role:"Data Analyst", bio:"", avatar:"" } };
       accounts.push(na); await store.set("dv-accounts", accounts);
@@ -261,17 +316,21 @@ export default function DataVista() {
 
   async function logout() {
     await store.set("dv-user", null);
-    setUser(null); setDatasets([]); setSelectedDs(null);
+    setUser(null); setDatasets([]); setSelectedDs(null); setBooted(false);
+    setStatsData([]); setChartData([]); setMlConfig({ target:"", algorithm:"linear", trained:false, metrics:{} });
+    setHypoConfig({ test:"ttest", var1:"", var2:"", result:null });
+    setTab("dashboard");
     setAuthFields({ name:"", email:"", password:"" });
   }
 
-  // ── Save datasets ─────────────────────────────────────────────────────────────
+  // ── Save datasets — FIX: use datasetsRef to avoid stale closure ───────────────
   const saveDatasets = useCallback(async (ds) => {
     setDatasets(ds);
+    datasetsRef.current = ds;
     if (user) await store.set(`dv-datasets-${user.id}`, ds);
   }, [user]);
 
-  // ── File import ───────────────────────────────────────────────────────────────
+  // ── File import — FIX: use datasetsRef.current instead of stale datasets ──────
   function handleFileImport(e) {
     const file = e.target.files[0]; if (!file) return;
     setImportProgress(10);
@@ -288,13 +347,16 @@ export default function DataVista() {
           const p = parseCSV(ev.target.result); headers = p.headers; rows = p.rows;
         }
         const ds = { id:Date.now(), name, source:"file", headers, rows:rows.slice(0,5000), created:new Date().toISOString() };
-        await saveDatasets([...datasets, ds]);
+        // FIX: use ref to get current datasets without stale closure
+        await saveDatasets([...datasetsRef.current, ds]);
         setSelectedDs(ds); setImportProgress(100);
         setTimeout(() => setImportProgress(0), 800);
         notify(`"${name}" imported — ${rows.length} rows`);
       } catch(err) { notify("Parse error: "+err.message, "error"); setImportProgress(0); }
     };
     reader.readAsText(file);
+    // Reset input so same file can be re-imported
+    e.target.value = "";
   }
 
   // ── Export ────────────────────────────────────────────────────────────────────
@@ -305,7 +367,7 @@ export default function DataVista() {
     notify(`Exported as ${fmt.toUpperCase()}`);
   }
 
-  // ── Live API loaders ──────────────────────────────────────────────────────────
+  // ── Live API loaders — FIX: use datasetsRef for addLiveDsToWorkspace ─────────
   async function loadWB() {
     setLoadingApi(p=>({...p,wb:true}));
     try {
@@ -333,8 +395,9 @@ export default function DataVista() {
     } catch(e) { notify("CoinGecko error: "+e.message, "error"); }
     setLoadingApi(p=>({...p,crypto:false}));
   }
+  // FIX: use datasetsRef.current to avoid stale closure
   async function addLiveDsToWorkspace(ds) {
-    await saveDatasets([...datasets, ds]);
+    await saveDatasets([...datasetsRef.current, ds]);
     setSelectedDs(ds); setTab("explorer");
     notify(`"${ds.name}" added to workspace`);
   }
@@ -366,7 +429,8 @@ export default function DataVista() {
       });
     }
     const cleaned = {...selectedDs, id:Date.now(), name:selectedDs.name.replace(/\.[^.]+$/,"")+"_cleaned.csv", rows, created:new Date().toISOString()};
-    saveDatasets([...datasets, cleaned]); setSelectedDs(cleaned);
+    saveDatasets([...datasetsRef.current.filter(d => d.id !== cleaned.id), cleaned]);
+    setSelectedDs(cleaned);
     notify(`Cleaned: ${rows.length} rows remain`);
   }
 
@@ -511,7 +575,20 @@ export default function DataVista() {
     .progress-fill{height:100%;border-radius:999px;transition:width .4s ease;background:linear-gradient(90deg,${scheme.accent},${scheme.accent2});}
   `;
 
-  // ── Auth screen ───────────────────────────────────────────────────────────────
+  // ── Show loading spinner while restoring session ───────────────────────────────
+  if (!booted) return (
+    <>
+      <style>{css}</style>
+      <div style={{ minHeight:"100vh", background:T.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontSize:38, fontWeight:800, color:T.text, letterSpacing:"-.04em", marginBottom:16 }}>Data<span style={{color:scheme.accent}}>Vista</span></div>
+          <span className="spin" style={{ fontSize:28, color:scheme.accent }}>↻</span>
+        </div>
+      </div>
+    </>
+  );
+
+  // ── Auth screen — FIX: replaced <form> with div, button uses onClick ──────────
   if (!user) return (
     <>
       <style>{css}</style>
@@ -524,18 +601,39 @@ export default function DataVista() {
           <div style={{ ...cardStyle, padding:36, boxShadow:`0 0 40px ${scheme.glow}` }}>
             <div style={{ display:"flex", gap:8, marginBottom:28 }}>
               {["login","signup"].map(m=>(
-                <button key={m} onClick={()=>setAuthMode(m)} style={{ flex:1, padding:10, borderRadius:10, border:"none", fontFamily:"Outfit,sans-serif", fontWeight:600, fontSize:14, cursor:"pointer", background:authMode===m?scheme.accent:T.hover, color:authMode===m?"#fff":T.textSub, transition:".2s" }}>
+                <button key={m} onClick={()=>{ setAuthMode(m); setAuthError(""); }} style={{ flex:1, padding:10, borderRadius:10, border:"none", fontFamily:"Outfit,sans-serif", fontWeight:600, fontSize:14, cursor:"pointer", background:authMode===m?scheme.accent:T.hover, color:authMode===m?"#fff":T.textSub, transition:".2s" }}>
                   {m==="login"?"Sign In":"Create Account"}
                 </button>
               ))}
             </div>
-            <form onSubmit={handleAuth} style={{ display:"flex", flexDirection:"column", gap:16 }}>
-              {authMode==="signup"&&<div><label style={{fontSize:13,color:T.textSub,display:"block",marginBottom:6}}>Full Name</label><input style={inpStyle} value={authFields.name} onChange={e=>setAuthFields(p=>({...p,name:e.target.value}))} required placeholder="Jane Smith"/></div>}
-              <div><label style={{fontSize:13,color:T.textSub,display:"block",marginBottom:6}}>Email</label><input style={inpStyle} type="email" value={authFields.email} onChange={e=>setAuthFields(p=>({...p,email:e.target.value}))} required placeholder="jane@example.com"/></div>
-              <div><label style={{fontSize:13,color:T.textSub,display:"block",marginBottom:6}}>Password</label><input style={inpStyle} type="password" value={authFields.password} onChange={e=>setAuthFields(p=>({...p,password:e.target.value}))} required placeholder="••••••••"/></div>
-              {authError&&<div style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,padding:"10px 14px",color:"#f87171",fontSize:13}}>{authError}</div>}
-              <button style={{...btnPrimary,padding:12,fontSize:15,marginTop:6}} type="submit">{authMode==="login"?"Sign In":"Create Account"}</button>
-            </form>
+            {/* FIX: replaced <form onSubmit> with plain div */}
+            <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+              {authMode==="signup"&&(
+                <div>
+                  <label style={{fontSize:13,color:T.textSub,display:"block",marginBottom:6}}>Full Name</label>
+                  <input style={inpStyle} value={authFields.name} onChange={e=>setAuthFields(p=>({...p,name:e.target.value}))} placeholder="Jane Smith"
+                    onKeyDown={e=>e.key==="Enter"&&handleAuth()}/>
+                </div>
+              )}
+              <div>
+                <label style={{fontSize:13,color:T.textSub,display:"block",marginBottom:6}}>Email</label>
+                <input style={inpStyle} type="email" value={authFields.email} onChange={e=>setAuthFields(p=>({...p,email:e.target.value}))} placeholder="jane@example.com"
+                  onKeyDown={e=>e.key==="Enter"&&handleAuth()}/>
+              </div>
+              <div>
+                <label style={{fontSize:13,color:T.textSub,display:"block",marginBottom:6}}>Password</label>
+                <input style={inpStyle} type="password" value={authFields.password} onChange={e=>setAuthFields(p=>({...p,password:e.target.value}))} placeholder="••••••••"
+                  onKeyDown={e=>e.key==="Enter"&&handleAuth()}/>
+              </div>
+              {authError&&(
+                <div style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,padding:"10px 14px",color:"#f87171",fontSize:13}}>
+                  {authError}
+                </div>
+              )}
+              <button style={{...btnPrimary,padding:12,fontSize:15,marginTop:6}} onClick={handleAuth}>
+                {authMode==="login"?"Sign In":"Create Account"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -733,7 +831,7 @@ export default function DataVista() {
                                 <button onClick={()=>{setSelectedDs(d);setTab("explorer");}} style={{ background:scheme.accent,color:"#fff",border:"none",borderRadius:7,padding:"4px 10px",fontSize:12,cursor:"pointer",fontFamily:"Outfit,sans-serif" }}>Open</button>
                                 <button onClick={()=>exportDataset(d,"csv")} style={{ background:T.hover,color:T.textSub,border:`1px solid ${T.border}`,borderRadius:7,padding:"4px 10px",fontSize:12,cursor:"pointer",fontFamily:"Outfit,sans-serif" }}>CSV</button>
                                 <button onClick={()=>exportDataset(d,"json")} style={{ background:T.hover,color:T.textSub,border:`1px solid ${T.border}`,borderRadius:7,padding:"4px 10px",fontSize:12,cursor:"pointer",fontFamily:"Outfit,sans-serif" }}>JSON</button>
-                                <button onClick={async()=>{const u=datasets.filter(x=>x.id!==d.id);await saveDatasets(u);if(selectedDs?.id===d.id)setSelectedDs(null);notify("Removed");}} style={{ background:"rgba(239,68,68,0.1)",color:"#f87171",border:"none",borderRadius:7,padding:"4px 9px",fontSize:12,cursor:"pointer" }}>✕</button>
+                                <button onClick={async()=>{const u=datasetsRef.current.filter(x=>x.id!==d.id);await saveDatasets(u);if(selectedDs?.id===d.id)setSelectedDs(null);notify("Removed");}} style={{ background:"rgba(239,68,68,0.1)",color:"#f87171",border:"none",borderRadius:7,padding:"4px 9px",fontSize:12,cursor:"pointer" }}>✕</button>
                               </div>
                             </td>
                           </tr>
@@ -956,7 +1054,6 @@ export default function DataVista() {
                           <CartesianGrid {...gridProps}/>
                           <XAxis dataKey="name" {...axisProps}/>
                           <YAxis {...axisProps}/>
-                          {/* cursor fill is a light overlay, NOT gray background shape */}
                           <Tooltip content={<ChartTooltip isDark={isDark} accent={scheme.accent}/>} cursor={{ fill:scheme.glow }}/>
                           <Bar dataKey="value" fill={scheme.accent} name={vizConfig.y||"value"} radius={[5,5,0,0]}/>
                         </BarChart>
