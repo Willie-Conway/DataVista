@@ -67,6 +67,8 @@
   6. Visualization Built
 - **Visual progress indicators** with checkmarks
 
+![alt text](Screenshots/User_Dashboard.png)
+
 ---
 
 ## 📡 **Module 02: Data Sources — Live API Integration**
@@ -90,6 +92,8 @@
 - **One-click** "Add to Workspace"
 - **Visual preview** for weather data (area chart)
 
+![alt text](<Screenshots/Data Sources.png>)
+
 ---
 
 ## 🔍 **Module 03: Data Explorer — Dataset Inspection**
@@ -106,6 +110,8 @@
 - **Limited preview** (100 rows) with "Showing X of Y" indicator
 - **Monospaced font** for numeric values
 - **Hover effects** on rows
+
+![alt text](<Screenshots/Data Explorer.png>)
 
 ---
 
@@ -137,6 +143,8 @@
   - Unique value count
 - **Color coding**: 🟢 numeric, 🟣 text
 
+![alt text](<Screenshots/Data Cleaning.png>)
+
 ---
 
 ## ⚙️ **Module 05: Preprocessing for Machine Learning**
@@ -157,6 +165,8 @@
   - Unique value count
 - **Color coding**: 🟢 numeric, 🟣 categorical
 
+![alt text](Screenshots/Preprocessing.png)
+
 ---
 
 ## ∑ **Module 06: Descriptive Statistics**
@@ -175,6 +185,8 @@
 ### **One-Click Calculation** ⚡
 - **"Calculate Statistics"** button
 - **"Download Report"** button for text export
+
+![alt text](Screenshots/Statistics.png)
 
 ---
 
@@ -202,6 +214,8 @@
 - **Pie chart labels** with truncated names
 - **Scatter plot** with X/Y axes
 
+![alt text](Screenshots/Visualization.png)
+
 ---
 
 ## 🤖 **Module 08: Machine Learning Models**
@@ -228,6 +242,8 @@
 - **Progress bar** for R² score
 - **Feature selection** from numeric columns
 
+![alt text](<Screenshots/ML models.png>)
+
 ---
 
 ## ⊛ **Module 09: Hypothesis Testing**
@@ -245,6 +261,8 @@
 - **Conclusion**: Reject H₀ / Fail to Reject H₀
 - **Interpretation** in plain English
 - **Significance level**: α = 0.05 (two-tailed)
+
+![alt text](Screenshots/Hypothesis.png)
 
 ---
 
@@ -266,6 +284,9 @@
 - **Monospaced font** for readability
 - **Scrollable** for long reports
 
+
+![alt text](Screenshots/Reports.png)
+
 ---
 
 ## ◯ **Module 11: Profile Management**
@@ -281,6 +302,17 @@
 - **Local storage** for all user data
 - **Avatar saved** as base64
 - **Settings** persist across sessions
+
+
+![alt text](Screenshots/Profile.png)
+
+### **Dark mode** 🌑
+- **Manual toggle** via button
+- **Toggle** in settings panel
+- **System preference** detection
+- **Persistent** across sessions
+
+![alt text](<Screenshots/Dark Mode.png>)
 
 ---
 
