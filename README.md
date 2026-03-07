@@ -1,3 +1,5 @@
+[![Deploy to GitHub Pages](https://github.com/Willie-Conway/DataVista/actions/workflows/deploy.yml/badge.svg)](https://github.com/Willie-Conway/DataVista/actions/workflows/deploy.yml)
+
 # 📊 DataVista — Real-Time Data Analysis & Machine Learning Platform
 
 ![alt text](Screenshots/DataVisata.png)
