@@ -1,0 +1,11 @@
+DataVista Report — Statistics
+Generated: 3/7/2026, 6:21:55 AM
+============================================================
+
+Dataset: WorldBank_NY.GDP.MKTP_cleaned.csv
+
+Column: value
+  Count:39 Mean:16625837238315.994 Median:6168787362595.330 Std:19885064218141.813 Min:12124739862.530 Max:71321142708251.094
+
+Column: year
+  Count:39 Mean:2024.000 Median:2024.000 Std:0.000 Min:2024.000 Max:2024.000

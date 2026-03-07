@@ -1,0 +1,12 @@
+DataVista Report — Data Quality
+Generated: 3/7/2026, 6:21:55 AM
+============================================================
+
+Dataset: WorldBank_NY.GDP.MKTP_cleaned.csv
+Rows: 39  Columns: 5
+
+  country: 0 missing (0.0%)
+  code: 3 missing (7.7%)
+  value: 0 missing (0.0%)
+  year: 0 missing (0.0%)
+  indicator: 0 missing (0.0%)
