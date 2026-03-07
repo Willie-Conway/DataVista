@@ -1,8 +1,8 @@
 {
   "files": {
-    "main.js": "/DataVista/static/js/main.9a3e8676.js",
-    "index.html": "/DataVista/index.html",
-    "main.9a3e8676.js.map": "/DataVista/static/js/main.9a3e8676.js.map"
+    "main.js": "/datavista-app/static/js/main.9a3e8676.js",
+    "index.html": "/datavista-app/index.html",
+    "main.9a3e8676.js.map": "/datavista-app/static/js/main.9a3e8676.js.map"
   },
   "entrypoints": [
     "static/js/main.9a3e8676.js"
