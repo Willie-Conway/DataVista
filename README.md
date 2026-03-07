@@ -1,5 +1,5 @@
 
-# 🚀 DataVisa - Comprehensive Data Analysis Tool
+#  DataVisa - Real-time data analysis & machine learning platform
 
 ![DataVisa Screenshot](https://github.com/Willie-Conway/DataVista-App/blob/62b22806b37009186f100531f50769ed98517397/assets/DataVista.png)
 
