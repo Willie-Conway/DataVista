@@ -1,5 +1,7 @@
 # 📊 DataVista — Real-Time Data Analysis & Machine Learning Platform
 
+![alt text](Screenshots/DataVisata.png)
+
 ![DataVista](https://img.shields.io/badge/DataVista-Real_Time_Data_Analysis-3b82f6?style=for-the-badge&logo=python&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=white)
 ![Recharts](https://img.shields.io/badge/Recharts-Visualizations-10b981?style=for-the-badge&logo=chartdotjs&logoColor=white)
