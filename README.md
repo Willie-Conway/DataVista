@@ -216,7 +216,7 @@
 - **Pie chart labels** with truncated names
 - **Scatter plot** with X/Y axes
 
-![alt text](Screenshots/Visualization.png)
+![alt text](Screenshots/Visualization_1.png)
 
 ---
 
