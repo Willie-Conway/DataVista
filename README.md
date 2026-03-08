@@ -316,6 +316,8 @@
 
 ![alt text](<Screenshots/Dark Mode.png>)
 
+![alt text](Screenshots/Dashboard_Dark_mode.png)
+
 ---
 
 ## 🎨 **Design & Aesthetics**
