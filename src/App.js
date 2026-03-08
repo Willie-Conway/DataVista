@@ -1423,7 +1423,6 @@ export default function DataVista() {
                     ):<div style={{ color:T.textMuted,fontSize:14,padding:"28px 0",textAlign:"center" }}>Train a model to see metrics</div>}
                   </div>
                 </div>
-              </div>
             )}
 
             {/* ── HYPOTHESIS ────────────────────────────────────────────── */}
@@ -1458,7 +1457,6 @@ export default function DataVista() {
                     ):<div style={{ color:T.textMuted,fontSize:14,padding:"28px 0",textAlign:"center" }}>Configure and run a test</div>}
                   </div>
                 </div>
-              </div>
             )}
 
             {/* ── REPORTS ───────────────────────────────────────────────── */}
