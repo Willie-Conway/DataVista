@@ -185,6 +185,10 @@ export default function DataVista() {
   const [dashWeatherCity, setDashWeatherCity] = useState("New York");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // ── Mobile state ─────────────────────────────────────────────────────────────
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
+  const [navOpen, setNavOpen] = useState(false);
+
   // ── Map state ────────────────────────────────────────────────────────────────
   const [userLocation, setUserLocation] = useState(null);
   const [locationError, setLocationError] = useState(null);
@@ -246,9 +250,9 @@ export default function DataVista() {
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
     *{box-sizing:border-box;margin:0;padding:0;}
-    html,body,#root{height:100%;}
-    body{font-family:'Outfit',sans-serif;}
-    ::-webkit-scrollbar{width:5px;height:5px;}
+    html,body,#root{height:100%;overflow:hidden;}
+    body{font-family:'Outfit',sans-serif;-webkit-tap-highlight-color:transparent;}
+    ::-webkit-scrollbar{width:4px;height:4px;}
     ::-webkit-scrollbar-track{background:transparent;}
     ::-webkit-scrollbar-thumb{background:${T.scrollbar};border-radius:4px;}
     .dv-page{position:absolute;inset:0;will-change:opacity,transform;}
@@ -264,10 +268,12 @@ export default function DataVista() {
     .dv-app-exit {animation:dv-app-out .3s  cubic-bezier(.4,0,.2,1)   both;}
     @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
     @keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes slideLeft{from{opacity:0;transform:translateX(-100%)}to{opacity:1;transform:translateX(0)}}
     @keyframes spin{to{transform:rotate(360deg)}}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
     .fade-up{animation:fadeUp .3s ease both;}
     .slide-down{animation:slideDown .18s ease both;}
+    .slide-left{animation:slideLeft .28s cubic-bezier(.22,1,.36,1) both;}
     .spin{animation:spin .75s linear infinite;display:inline-block;}
     .pulse{animation:pulse 1.5s ease infinite;}
     .auth-field{opacity:0;animation:fadeUp .35s ease both;}
@@ -284,27 +290,75 @@ export default function DataVista() {
     .progress-track{background:${T.border};border-radius:999px;height:6px;overflow:hidden;}
     .progress-fill{height:100%;border-radius:999px;transition:width .4s ease;background:linear-gradient(90deg,${scheme.accent},${scheme.accent2});}
     @keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
-    @keyframes toastOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(20px)}}
     .toast-in{animation:toastIn .3s cubic-bezier(.22,1,.36,1) both;}
-    .toast-out{animation:toastOut .25s ease both;}
     @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
     .shimmer{background:linear-gradient(90deg,${T.border} 25%,${T.hover} 50%,${T.border} 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;}
 
-    /* ── Leaflet overrides ── */
-    .leaflet-container { border-radius: 10px; font-family: 'Outfit', sans-serif; }
-    .leaflet-control-zoom a { background: ${T.card} !important; color: ${T.text} !important; border-color: ${T.cardBorder} !important; }
-    .leaflet-control-zoom a:hover { background: ${T.hover} !important; }
-    .leaflet-control-attribution { background: ${T.card}cc !important; color: ${T.textMuted} !important; font-size: 9px !important; }
-    .leaflet-popup-content-wrapper { background: ${T.card}; border: 1px solid ${T.cardBorder}; color: ${T.text}; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
-    .leaflet-popup-tip { background: ${T.card}; }
+    /* ── Leaflet ── */
+    .leaflet-container{border-radius:10px;font-family:'Outfit',sans-serif;}
+    .leaflet-control-zoom a{background:${T.card}!important;color:${T.text}!important;border-color:${T.cardBorder}!important;}
+    .leaflet-control-zoom a:hover{background:${T.hover}!important;}
+    .leaflet-control-attribution{background:${T.card}cc!important;color:${T.textMuted}!important;font-size:9px!important;}
+    .leaflet-popup-content-wrapper{background:${T.card};border:1px solid ${T.cardBorder};color:${T.text};border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.4);}
+    .leaflet-popup-tip{background:${T.card};}
+    @keyframes locPulse{0%,100%{transform:scale(1);opacity:0.6}50%{transform:scale(1.8);opacity:0}}
+    .loc-pulse{animation:locPulse 2s ease-out infinite;}
+    .map-chip{transition:background .15s,color .15s,border-color .15s;cursor:pointer;}
+    .map-chip:hover{border-color:${scheme.accent}!important;}
 
-    /* ── Pulse marker animation ── */
-    @keyframes locPulse { 0%,100%{transform:scale(1);opacity:0.6} 50%{transform:scale(1.8);opacity:0} }
-    .loc-pulse { animation: locPulse 2s ease-out infinite; }
+    /* ── Responsive grid helpers ── */
+    .dv-g4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
+    .dv-g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;}
+    .dv-g2s{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+    .dv-g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;}
+    .dv-profile-grid{display:grid;grid-template-columns:290px 1fr;gap:18px;}
 
-    /* ── Map style chip ── */
-    .map-chip { transition: background .15s, color .15s, border-color .15s; cursor: pointer; }
-    .map-chip:hover { border-color: ${scheme.accent} !important; }
+    /* ── Bottom nav (mobile only) ── */
+    .dv-bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;z-index:500;background:${T.sidebar};border-top:1px solid ${T.border};overflow-x:auto;-webkit-overflow-scrolling:touch;}
+
+    /* ── Sidebar drawer overlay (mobile) ── */
+    .dv-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:700;backdrop-filter:blur(2px);}
+
+    /* ── Mobile page padding ── */
+    .dv-page-content{padding:20px 26px;}
+
+    /* ── Desktop-only sidebar ── */
+    .dv-sidebar-desktop{display:flex;}
+
+    /* ── Mobile topbar logo (hidden on desktop) ── */
+    .dv-mob-logo{display:none;}
+    .dv-desk-title{display:block;}
+
+    /* ── Weather city chips: hide on mobile ── */
+    .dv-weather-chips{display:flex;}
+    .dv-weather-select{display:none;}
+    .dv-map-chips{display:flex;}
+    .dv-map-select{display:none;}
+
+    /* ── Media queries ── */
+    @media(max-width:767px){
+      .dv-sidebar-desktop{display:none!important;}
+      .dv-bottom-nav{display:flex!important;}
+      .dv-overlay{display:block;}
+      .dv-g4{grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+      .dv-g2{grid-template-columns:1fr;gap:12px;margin-bottom:14px;}
+      .dv-g2s{grid-template-columns:1fr;gap:10px;}
+      .dv-g3{grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+      .dv-profile-grid{grid-template-columns:1fr;}
+      .dv-page-content{padding:14px 12px;padding-bottom:80px!important;}
+      .dv-mob-logo{display:flex!important;}
+      .dv-desk-title{display:none!important;}
+      .dv-weather-chips{display:none!important;}
+      .dv-weather-select{display:block!important;}
+      .dv-map-chips{display:none!important;}
+      .dv-map-select{display:block!important;}
+      .dv-auth-card-pad{padding:24px 20px!important;}
+      .dv-settings-dropdown{width:calc(100vw - 24px)!important;right:-40px!important;}
+    }
+    @media(max-width:479px){
+      .dv-g3{grid-template-columns:1fr;}
+      .dv-g4{grid-template-columns:1fr 1fr;}
+    }
   `;
 
   // ── BOOT ─────────────────────────────────────────────────────────────────────
@@ -480,6 +534,13 @@ export default function DataVista() {
     return () => {
       if (leafletMapRef.current) { leafletMapRef.current.remove(); leafletMapRef.current = null; }
     };
+  }, []);
+
+  // ── Window resize → isMobile ──────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
   }, []);
 
   // ── Invalidate map size when switching back to dashboard ──────────────────────
@@ -752,6 +813,15 @@ export default function DataVista() {
   const usageDays = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   const usageChartData = usageDays.map(d=>({ day:d, sessions:usageLog[d]||0 }));
 
+  // ── Viewport meta (mobile) ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!document.querySelector('meta[name="viewport"]')) {
+      const m = document.createElement("meta");
+      m.name = "viewport"; m.content = "width=device-width,initial-scale=1,maximum-scale=1";
+      document.head.appendChild(m);
+    }
+  }, []);
+
   // ── BOOT SPLASH ───────────────────────────────────────────────────────────────
   if (appPhase === "booting") return (
     <>
@@ -780,7 +850,7 @@ export default function DataVista() {
             <div style={{ fontSize:40, fontWeight:800, color:T.text, letterSpacing:"-.05em", fontFamily:"'Outfit',sans-serif" }}>Data<span style={{color:scheme.accent}}>Vista</span></div>
             <p style={{ color:T.textSub, fontSize:14, marginTop:8, fontWeight:400 }}>{authMode === "login" ? "Turn raw data into decisions, instantly and beautifully" : "Create your free analytics account"}</p>
           </div>
-          <div style={{ background:T.card, border:`1px solid ${T.cardBorder}`, borderRadius:18, padding:"34px 36px", boxShadow:`0 0 60px ${scheme.glow}, 0 24px 48px rgba(0,0,0,${isDark?.3:.1})` }}>
+          <div className="dv-auth-card-pad" style={{ background:T.card, border:`1px solid ${T.cardBorder}`, borderRadius:18, padding:"34px 36px", boxShadow:`0 0 60px ${scheme.glow}, 0 24px 48px rgba(0,0,0,${isDark?.3:.1})` }}>
             <div className="auth-field" style={{ display:"flex", gap:6, marginBottom:28, background:T.surface, borderRadius:11, padding:4 }}>
               {["login","signup"].map(m=>(<button key={m} onClick={()=>{ setAuthMode(m); setAuthError(""); }} style={{ flex:1, padding:"8px 0", borderRadius:8, border:"none", fontFamily:"'Outfit',sans-serif", fontWeight:600, fontSize:14, cursor:"pointer", transition:"all .2s cubic-bezier(.22,1,.36,1)", background:authMode===m?scheme.accent:"transparent", color:authMode===m?"#fff":T.textSub, boxShadow:authMode===m?`0 2px 12px ${scheme.glow}`:"none" }}>{m==="login" ? "Sign In" : "Create Account"}</button>))}
             </div>
@@ -805,15 +875,15 @@ export default function DataVista() {
     <>
       <style>{css}</style>
       {toast && (
-        <div className="toast-in" style={{ position:"fixed", top:20, right:20, zIndex:9999, background:toast.type==="error"?(isDark?"#7f1d1d":"#fee2e2"):(isDark?"#052e16":"#dcfce7"), border:`1px solid ${toast.type==="error"?"#ef4444":"#16a34a"}`, color:toast.type==="error"?(isDark?"#fca5a5":"#dc2626"):(isDark?"#86efac":"#166534"), padding:"11px 18px", borderRadius:10, fontSize:14, fontWeight:500, boxShadow:"0 8px 30px rgba(0,0,0,0.3)", maxWidth:360, display:"flex", alignItems:"center", gap:8 }}>
+        <div className="toast-in" style={{ position:"fixed", top:16, right:12, left:12, zIndex:9999, background:toast.type==="error"?(isDark?"#7f1d1d":"#fee2e2"):(isDark?"#052e16":"#dcfce7"), border:`1px solid ${toast.type==="error"?"#ef4444":"#16a34a"}`, color:toast.type==="error"?(isDark?"#fca5a5":"#dc2626"):(isDark?"#86efac":"#166534"), padding:"11px 16px", borderRadius:10, fontSize:14, fontWeight:500, boxShadow:"0 8px 30px rgba(0,0,0,0.3)", display:"flex", alignItems:"center", gap:8, maxWidth:420, margin:"0 auto" }}>
           <span style={{ fontSize:15 }}>{toast.type==="error"?"✕":"✓"}</span> {toast.msg}
         </div>
       )}
 
       <div className={appClass} style={{ display:"flex", height:"100vh", background:T.bg, overflow:"hidden" }}>
 
-        {/* ── Sidebar ─────────────────────────────────────────────────────── */}
-        <div style={{ width:222, flexShrink:0, background:T.sidebar, borderRight:`1px solid ${T.border}`, display:"flex", flexDirection:"column", overflowY:"auto" }}>
+        {/* ── Desktop Sidebar ──────────────────────────────────────────────── */}
+        <div className="dv-sidebar-desktop" style={{ width:222, flexShrink:0, background:T.sidebar, borderRight:`1px solid ${T.border}`, flexDirection:"column", overflowY:"auto" }}>
           <div style={{ padding:"22px 18px 14px", borderBottom:`1px solid ${T.border}` }}>
             <div style={{ fontSize:22, fontWeight:800, color:T.text, letterSpacing:"-.04em" }}>Data<span style={{color:scheme.accent}}>Vista</span></div>
             <div style={{ fontSize:10, color:T.textMuted, fontWeight:700, letterSpacing:".1em", textTransform:"uppercase", marginTop:2 }}>Analytics Platform</div>
@@ -837,58 +907,74 @@ export default function DataVista() {
           </div>
         </div>
 
+        {/* ── Mobile Bottom Nav ────────────────────────────────────────────── */}
+        <nav className="dv-bottom-nav" style={{ display:"flex" }}>
+          {navItems.map(n=>(
+            <button key={n.id} onClick={()=>setTab(n.id)} style={{ flex:"0 0 auto", minWidth:64, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, padding:"8px 6px", border:"none", background:"transparent", cursor:"pointer", fontFamily:"'Outfit',sans-serif", color:tab===n.id?scheme.accent:T.textMuted, borderTop:tab===n.id?`2px solid ${scheme.accent}`:"2px solid transparent" }}>
+              <span style={{ fontSize:16, lineHeight:1 }}>{n.icon}</span>
+              <span style={{ fontSize:9, fontWeight:600, whiteSpace:"nowrap" }}>{n.label.split(" ")[0]}</span>
+            </button>
+          ))}
+          <button onClick={logout} style={{ flex:"0 0 auto", minWidth:64, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, padding:"8px 6px", border:"none", background:"transparent", cursor:"pointer", fontFamily:"'Outfit',sans-serif", color:T.textMuted, borderTop:"2px solid transparent" }}>
+            <span style={{ fontSize:16 }}>↩</span>
+            <span style={{ fontSize:9, fontWeight:600 }}>Logout</span>
+          </button>
+        </nav>
+
         {/* ── Main content ─────────────────────────────────────────────────── */}
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
           {/* Topbar */}
-          <div style={{ background:T.sidebar, borderBottom:`1px solid ${T.border}`, padding:"11px 26px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ background:T.sidebar, borderBottom:`1px solid ${T.border}`, padding:"10px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0, minHeight:54 }}>
+            {/* Mobile logo (hidden on desktop) */}
+            <div className="dv-mob-logo" style={{ display:"none", alignItems:"center", gap:8 }}>
+              <div style={{ fontSize:18, fontWeight:800, color:T.text, letterSpacing:"-.04em" }}>Data<span style={{color:scheme.accent}}>Vista</span></div>
+            </div>
+            {/* Desktop tab title + active dataset badge */}
+            <div className="dv-desk-title" style={{ display:"flex", alignItems:"center", gap:10 }}>
               <div style={{ fontSize:17, fontWeight:700, color:T.text }}>{navItems.find(n=>n.id===tab)?.label}</div>
-              {ds && <span style={{ fontSize:11, background:scheme.glow, color:scheme.accent, border:`1px solid ${scheme.accent}40`, padding:"2px 10px", borderRadius:20, fontWeight:600 }}>{ds.name}</span>}
+              {ds && <span style={{ fontSize:11, background:scheme.glow, color:scheme.accent, border:`1px solid ${scheme.accent}40`, padding:"2px 10px", borderRadius:20, fontWeight:600, maxWidth:160, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ds.name}</span>}
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
               {/* Refresh button */}
-              <button
-                onClick={handleRefresh}
-                title="Refresh page"
-                style={{ background:T.hover, border:`1px solid ${T.border}`, color:T.textSub, borderRadius:9, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:".2s", fontSize:16 }}>
+              <button onClick={handleRefresh} title="Refresh page" style={{ background:T.hover, border:`1px solid ${T.border}`, color:T.textSub, borderRadius:9, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:".2s", fontSize:15 }}>
                 <span className={isRefreshing?"spin":""} style={{ display:"inline-block", lineHeight:1 }}>↻</span>
               </button>
               {/* Settings */}
               <div style={{ position:"relative" }} ref={settingsRef}>
-              <button onClick={()=>setSettingsOpen(o=>!o)} style={{ background:settingsOpen?scheme.glow:T.hover, border:`1px solid ${settingsOpen?scheme.accent:T.border}`, color:settingsOpen?scheme.accent:T.textSub, borderRadius:9, width:38, height:38, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"4px", cursor:"pointer", transition:".2s" }}>
-                {[16,11,16].map((w,i)=><div key={i} style={{ width:w, height:2, background:"currentColor", borderRadius:2 }}/>)}
-              </button>
-              {settingsOpen && (
-                <div className="slide-down" style={{ position:"absolute", top:"calc(100% + 8px)", right:0, background:T.card, border:`1px solid ${T.cardBorder}`, borderRadius:14, padding:20, width:290, zIndex:600, boxShadow:`0 16px 48px rgba(0,0,0,${isDark?.5:.18})` }}>
-                  <div style={{ fontSize:12, fontWeight:700, color:T.textSub, textTransform:"uppercase", letterSpacing:".08em", marginBottom:16 }}>App Settings</div>
-                  <div style={{ marginBottom:18 }}>
-                    <div style={{ fontSize:12, color:T.textSub, fontWeight:600, marginBottom:8 }}>Display Mode</div>
-                    <div style={{ display:"flex", gap:8 }}>
-                      {[{v:false,icon:"☀",label:"Light"},{v:true,icon:"◑",label:"Dark"}].map(m=>(
-                        <button key={String(m.v)} onClick={()=>saveSettings({isDark:m.v,schemeKey})} style={{ flex:1, padding:"9px 0", borderRadius:9, border:`1.5px solid ${isDark===m.v?scheme.accent:T.border}`, background:isDark===m.v?scheme.glow:T.surface, color:isDark===m.v?scheme.accent:T.textSub, fontFamily:"'Outfit',sans-serif", fontWeight:600, fontSize:13, cursor:"pointer", transition:".15s", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>{m.icon} {m.label}</button>
-                      ))}
+                <button onClick={()=>setSettingsOpen(o=>!o)} style={{ background:settingsOpen?scheme.glow:T.hover, border:`1px solid ${settingsOpen?scheme.accent:T.border}`, color:settingsOpen?scheme.accent:T.textSub, borderRadius:9, width:36, height:36, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"4px", cursor:"pointer", transition:".2s" }}>
+                  {[16,11,16].map((w,i)=><div key={i} style={{ width:w, height:2, background:"currentColor", borderRadius:2 }}/>)}
+                </button>
+                {settingsOpen && (
+                  <div className="slide-down dv-settings-dropdown" style={{ position:"absolute", top:"calc(100% + 8px)", right:0, background:T.card, border:`1px solid ${T.cardBorder}`, borderRadius:14, padding:20, width:290, zIndex:600, boxShadow:`0 16px 48px rgba(0,0,0,${isDark?.5:.18})` }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:T.textSub, textTransform:"uppercase", letterSpacing:".08em", marginBottom:16 }}>App Settings</div>
+                    <div style={{ marginBottom:18 }}>
+                      <div style={{ fontSize:12, color:T.textSub, fontWeight:600, marginBottom:8 }}>Display Mode</div>
+                      <div style={{ display:"flex", gap:8 }}>
+                        {[{v:false,icon:"☀",label:"Light"},{v:true,icon:"◑",label:"Dark"}].map(m=>(
+                          <button key={String(m.v)} onClick={()=>saveSettings({isDark:m.v,schemeKey})} style={{ flex:1, padding:"9px 0", borderRadius:9, border:`1.5px solid ${isDark===m.v?scheme.accent:T.border}`, background:isDark===m.v?scheme.glow:T.surface, color:isDark===m.v?scheme.accent:T.textSub, fontFamily:"'Outfit',sans-serif", fontWeight:600, fontSize:13, cursor:"pointer", transition:".15s", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>{m.icon} {m.label}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize:12, color:T.textSub, fontWeight:600, marginBottom:8 }}>Color Scheme</div>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+                        {Object.entries(COLOR_SCHEMES).map(([k,s])=>(
+                          <button key={k} onClick={()=>saveSettings({isDark,schemeKey:k})} style={{ padding:"10px 6px", borderRadius:10, border:`2px solid ${schemeKey===k?s.accent:T.border}`, background:schemeKey===k?s.glow:T.surface, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
+                            <div style={{ display:"flex", gap:3 }}><div style={{ width:11, height:11, borderRadius:"50%", background:s.accent }}/><div style={{ width:11, height:11, borderRadius:"50%", background:s.accent2 }}/></div>
+                            <span style={{ fontSize:10, fontWeight:600, color:schemeKey===k?s.accent:T.textSub, lineHeight:1.2, textAlign:"center" }}>{s.name}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <div style={{ fontSize:12, color:T.textSub, fontWeight:600, marginBottom:8 }}>Color Scheme</div>
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
-                      {Object.entries(COLOR_SCHEMES).map(([k,s])=>(
-                        <button key={k} onClick={()=>saveSettings({isDark,schemeKey:k})} style={{ padding:"10px 6px", borderRadius:10, border:`2px solid ${schemeKey===k?s.accent:T.border}`, background:schemeKey===k?s.glow:T.surface, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
-                          <div style={{ display:"flex", gap:3 }}><div style={{ width:11, height:11, borderRadius:"50%", background:s.accent }}/><div style={{ width:11, height:11, borderRadius:"50%", background:s.accent2 }}/></div>
-                          <span style={{ fontSize:10, fontWeight:600, color:schemeKey===k?s.accent:T.textSub, lineHeight:1.2, textAlign:"center" }}>{s.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Page */}
-          <div style={{ flex:1, overflowY:"auto", padding:"26px 30px" }}>
+          <div className="dv-page-content" style={{ flex:1, overflowY:"auto" }}>
 
             {/* ── DASHBOARD ─────────────────────────────────────────────── */}
             {tab==="dashboard" && (
@@ -897,7 +983,7 @@ export default function DataVista() {
                 <div style={{ fontSize:14,color:T.textSub,marginBottom:20 }}>Here's your data workspace at a glance.</div>
 
                 {/* Stat cards */}
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:18 }}>
+                <div className="dv-g4">
                   {[
                     {label:"Datasets",value:datasets.length,color:scheme.accent,icon:"⬢",sub:"in workspace"},
                     {label:"Total Rows",value:datasets.reduce((a,d)=>a+(d.rows?.length||0),0).toLocaleString(),color:"#10b981",icon:"≡",sub:"all datasets"},
@@ -927,21 +1013,28 @@ export default function DataVista() {
                         <div style={{ fontSize:11, color:T.textMuted }}>{dashWeather ? dashWeather.city : "Loading…"}</div>
                       </div>
                     </div>
-                    {/* City selector */}
+                    {/* City selector — chips on desktop, select on mobile */}
                     <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      {DASH_WEATHER_CITIES.map(c=>(
-                        <button key={c.name} onClick={()=>fetchDashWeather(c)} style={{ padding:"3px 10px", borderRadius:20, border:`1.5px solid ${dashWeatherCity===c.name?scheme.accent:T.border2}`, background:dashWeatherCity===c.name?scheme.glow:T.surface, color:dashWeatherCity===c.name?scheme.accent:T.textMuted, fontSize:11, fontWeight:dashWeatherCity===c.name?700:500, fontFamily:"'Outfit',sans-serif", cursor:"pointer", transition:".15s" }}>{c.name}</button>
-                      ))}
-                      <button onClick={()=>fetchDashWeather()} title="Refresh weather" style={{ background:T.surface, border:`1px solid ${T.border2}`, color:T.textMuted, borderRadius:8, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13 }}>
+                      <div className="dv-weather-chips" style={{ display:"flex", alignItems:"center", gap:5, flexWrap:"wrap" }}>
+                        {DASH_WEATHER_CITIES.map(c=>(
+                          <button key={c.name} onClick={()=>fetchDashWeather(c)} style={{ padding:"3px 10px", borderRadius:20, border:`1.5px solid ${dashWeatherCity===c.name?scheme.accent:T.border2}`, background:dashWeatherCity===c.name?scheme.glow:T.surface, color:dashWeatherCity===c.name?scheme.accent:T.textMuted, fontSize:11, fontWeight:dashWeatherCity===c.name?700:500, fontFamily:"'Outfit',sans-serif", cursor:"pointer", transition:".15s" }}>{c.name}</button>
+                        ))}
+                      </div>
+                      <div className="dv-weather-select" style={{ display:"none" }}>
+                        <select style={{ ...selStyle, padding:"4px 8px", fontSize:12, width:"auto" }} value={dashWeatherCity} onChange={e=>{const c=DASH_WEATHER_CITIES.find(x=>x.name===e.target.value);if(c)fetchDashWeather(c);}}>
+                          {DASH_WEATHER_CITIES.map(c=><option key={c.name} value={c.name}>{c.name}</option>)}
+                        </select>
+                      </div>
+                      <button onClick={()=>fetchDashWeather()} title="Refresh weather" style={{ background:T.surface, border:`1px solid ${T.border2}`, color:T.textMuted, borderRadius:8, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13, flexShrink:0 }}>
                         <span className={dashWeatherLoading?"spin":""}>↻</span>
                       </button>
                     </div>
                   </div>
 
                   {dashWeather ? (
-                    <div style={{ padding:"16px 20px", display:"grid", gridTemplateColumns:"auto 1fr auto", gap:20, alignItems:"center" }}>
+                    <div style={{ padding:"16px 18px", display:"flex", flexWrap:"wrap", gap:18, alignItems:"flex-start" }}> 
                       {/* Current temp */}
-                      <div style={{ textAlign:"center" }}>
+                      <div style={{ textAlign:"center", minWidth:110 }}>
                         <div style={{ fontSize:52, fontWeight:800, color:T.text, fontFamily:"'JetBrains Mono',monospace", lineHeight:1 }}>{dashWeather.current?.temperature_2m?.toFixed(1) ?? "—"}°</div>
                         <div style={{ fontSize:11, color:T.textMuted, marginTop:4, textTransform:"uppercase", letterSpacing:".06em" }}>Current · {dashWeather.city}</div>
                         <div style={{ display:"flex", gap:12, justifyContent:"center", marginTop:10 }}>
@@ -951,7 +1044,7 @@ export default function DataVista() {
                       </div>
 
                       {/* 24-hour sparkline */}
-                      <div>
+                      <div style={{ flex:"1 1 200px", minWidth:0 }}>
                         <div style={{ fontSize:11, color:T.textMuted, marginBottom:6, textTransform:"uppercase", letterSpacing:".05em" }}>24-hour temperature</div>
                         <ResponsiveContainer width="100%" height={80}>
                           <AreaChart data={dashWeather.hourly.filter((_,i)=>i%2===0)} margin={{top:4,right:4,left:-28,bottom:0}}>
@@ -970,7 +1063,7 @@ export default function DataVista() {
                       </div>
 
                       {/* 5-day forecast */}
-                      <div style={{ display:"flex", flexDirection:"column", gap:6, minWidth:160 }}>
+                      <div style={{ flex:"1 1 150px", minWidth:140 }}>
                         <div style={{ fontSize:11, color:T.textMuted, textTransform:"uppercase", letterSpacing:".05em", marginBottom:2 }}>5-day forecast</div>
                         {dashWeather.daily.map((d,i)=>{
                           const label = i===0?"Today":new Date(d.date+"T12:00:00").toLocaleDateString("en",{weekday:"short"});
@@ -995,7 +1088,7 @@ export default function DataVista() {
                 </div>
 
                 {/* Charts row */}
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:18 }}>
+                <div className="dv-g2">
                   <div style={cardStyle}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:12 }}>
                       <div><div style={{ fontWeight:700,color:T.text,fontSize:14 }}>Weekly Activity</div><div style={{ fontSize:12,color:T.textSub,marginTop:1 }}>Tab visits by day of week</div></div>
@@ -1048,28 +1141,21 @@ export default function DataVista() {
                       </div>
                     </div>
 
-                    {/* Map style selector — chips */}
-                    <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
-                      <span style={{ fontSize:11, color:T.textMuted, marginRight:2 }}>Map:</span>
-                      {Object.entries(MAP_STYLES).map(([key, style]) => (
-                        <button
-                          key={key}
-                          className="map-chip"
-                          onClick={() => setMapStyle(key)}
-                          style={{
-                            padding:"4px 10px",
-                            borderRadius:20,
-                            border:`1.5px solid ${mapStyle === key ? scheme.accent : T.border2}`,
-                            background: mapStyle === key ? scheme.glow : T.surface,
-                            color: mapStyle === key ? scheme.accent : T.textMuted,
-                            fontSize:11,
-                            fontWeight: mapStyle === key ? 700 : 500,
-                            fontFamily:"'Outfit',sans-serif",
-                          }}
-                        >
-                          {style.name}
-                        </button>
-                      ))}
+                    {/* Map style selector — chips on desktop, select on mobile */}
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <span style={{ fontSize:11, color:T.textMuted }}>Map:</span>
+                      <div className="dv-map-chips" style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                        {Object.entries(MAP_STYLES).map(([key, style]) => (
+                          <button key={key} className="map-chip" onClick={() => setMapStyle(key)} style={{ padding:"4px 10px", borderRadius:20, border:`1.5px solid ${mapStyle===key?scheme.accent:T.border2}`, background:mapStyle===key?scheme.glow:T.surface, color:mapStyle===key?scheme.accent:T.textMuted, fontSize:11, fontWeight:mapStyle===key?700:500, fontFamily:"'Outfit',sans-serif" }}>
+                            {style.name}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="dv-map-select" style={{ display:"none" }}>
+                        <select style={{ ...selStyle, padding:"4px 8px", fontSize:12, width:"auto" }} value={mapStyle} onChange={e=>setMapStyle(e.target.value)}>
+                          {Object.entries(MAP_STYLES).map(([key,style])=><option key={key} value={key}>{style.name}</option>)}
+                        </select>
+                      </div>
                     </div>
                   </div>
 
@@ -1213,7 +1299,7 @@ export default function DataVista() {
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Data Cleaning</div>
                 <div style={{ fontSize:14,color:T.textSub,marginBottom:18 }}>Handle missing values, remove duplicates, filter outliers</div>
-                <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:18 }}>
+                <div className="dv-g2s" style={{ marginBottom:0 }}>
                   <div style={cardStyle}>
                     <div style={{ fontWeight:700,color:T.text,fontSize:14,marginBottom:14 }}>Configuration</div>
                     <div style={{ marginBottom:12 }}><label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:6 }}>Active Dataset</label><select style={selStyle} value={selectedDs?.id||""} onChange={e=>setSelectedDs(datasets.find(d=>d.id===parseInt(e.target.value))||null)}><option value="">— Select —</option>{datasets.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
@@ -1240,7 +1326,7 @@ export default function DataVista() {
                 <div style={{ fontSize:14,color:T.textSub,marginBottom:18 }}>Prepare data for machine learning</div>
                 <div style={{ ...cardStyle,marginBottom:16 }}><label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:7 }}>Active Dataset</label><select style={{ ...selStyle,maxWidth:300 }} value={selectedDs?.id||""} onChange={e=>setSelectedDs(datasets.find(d=>d.id===parseInt(e.target.value))||null)}><option value="">— Select —</option>{datasets.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
                 {ds&&<>
-                  <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:14 }}>
+                  <div className="dv-g2s">
                     {[{label:"Feature Scaling",opts:["None","Min-Max Normalization","Z-score Standardization","Robust Scaling"],note:"Scale numeric features"},{label:"Categorical Encoding",opts:["None","One-Hot Encoding","Label Encoding","Ordinal Encoding"],note:"Convert text to numbers"},{label:"Dimensionality Reduction",opts:["None","PCA","Feature Selection (Variance)","Correlation Filter"],note:"Reduce feature count"},{label:"Train / Test Split",opts:["80% / 20%","70% / 30%","60% / 40%","90% / 10%"],note:"Training vs evaluation ratio"}].map((opt,i)=>(
                       <div key={i} style={{ ...cardStyle,padding:16 }}>
                         <div style={{ fontWeight:600,color:T.text,fontSize:13,marginBottom:3 }}>{opt.label}</div>
@@ -1282,7 +1368,7 @@ export default function DataVista() {
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Visualization</div>
                 <div style={{ fontSize:14,color:T.textSub,marginBottom:18 }}>Build interactive charts from your data</div>
                 <div style={{ ...cardStyle,marginBottom:18 }}>
-                  <div style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:11,alignItems:"end" }}>
+                  <div className="dv-g4" style={{ alignItems:"end" }}>
                     <div><label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:6 }}>Dataset</label><select style={selStyle} value={selectedDs?.id||""} onChange={e=>setSelectedDs(datasets.find(d=>d.id===parseInt(e.target.value))||null)}><option value="">— Select —</option>{datasets.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
                     <div><label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:6 }}>Chart Type</label><select style={selStyle} value={vizConfig.type} onChange={e=>setVizConfig(p=>({...p,type:e.target.value}))}><option value="line">Line</option><option value="bar">Bar</option><option value="area">Area</option><option value="scatter">Scatter</option><option value="pie">Pie</option></select></div>
                     <div><label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:6 }}>X Axis</label><select style={selStyle} value={vizConfig.x} onChange={e=>setVizConfig(p=>({...p,x:e.target.value}))}><option value="">— Column —</option>{(ds?.headers||[]).map(h=><option key={h} value={h}>{h}</option>)}</select></div>
@@ -1316,9 +1402,7 @@ export default function DataVista() {
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Machine Learning</div>
                 <div style={{ fontSize:14,color:T.textSub,marginBottom:18 }}>Train predictive models on your dataset</div>
-                <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:18 }}>
-                  <div style={cardStyle}>
-                    <div style={{ fontWeight:700,color:T.text,fontSize:14,marginBottom:14 }}>Model Configuration</div>
+                <div className="dv-g2s">
                     <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
                       <div><label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:6 }}>Dataset</label><select style={selStyle} value={selectedDs?.id||""} onChange={e=>setSelectedDs(datasets.find(d=>d.id===parseInt(e.target.value))||null)}><option value="">— Select —</option>{datasets.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
                       <div><label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:6 }}>Target Column</label><select style={selStyle} value={mlConfig.target} onChange={e=>setMlConfig(p=>({...p,target:e.target.value}))}><option value="">— Select target —</option>{(ds?numericCols(ds.headers,ds.rows):[]).map(h=><option key={h} value={h}>{h}</option>)}</select></div>
@@ -1330,7 +1414,7 @@ export default function DataVista() {
                     <div style={{ fontWeight:700,color:T.text,fontSize:14,marginBottom:14 }}>Model Performance</div>
                     {mlConfig.trained?(
                       <>
-                        <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:11,marginBottom:14 }}>
+                        <div className="dv-g4" style={{ marginBottom:14 }}>
                           {[["R²",mlConfig.metrics.r2,scheme.accent],["RMSE",mlConfig.metrics.rmse,"#f59e0b"],["MAE",mlConfig.metrics.mae,"#10b981"],["Samples",mlConfig.metrics.samples,"#8b5cf6"]].map(([k,v,c])=>(<div key={k} style={{ background:T.surface,borderRadius:10,padding:13,border:`1px solid ${T.border}` }}><div style={{ fontSize:11,color:T.textSub,marginBottom:3 }}>{k}</div><div style={{ fontSize:20,fontWeight:700,color:c,fontFamily:"'JetBrains Mono',monospace" }}>{v}</div></div>))}
                         </div>
                         <div style={{ marginBottom:9 }}><div style={{ display:"flex",justifyContent:"space-between",fontSize:12,color:T.textSub,marginBottom:5 }}><span>R² Score</span><span style={{ fontFamily:"monospace" }}>{mlConfig.metrics.r2}</span></div><div className="progress-track"><div className="progress-fill" style={{ width:`${parseFloat(mlConfig.metrics.r2)*100}%` }}/></div></div>
@@ -1347,9 +1431,7 @@ export default function DataVista() {
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Hypothesis Testing</div>
                 <div style={{ fontSize:14,color:T.textSub,marginBottom:18 }}>Validate statistical assumptions</div>
-                <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:18 }}>
-                  <div style={cardStyle}>
-                    <div style={{ fontWeight:700,color:T.text,fontSize:14,marginBottom:14 }}>Test Configuration</div>
+                <div className="dv-g2s">
                     <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
                       <div><label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:6 }}>Dataset</label><select style={selStyle} value={selectedDs?.id||""} onChange={e=>setSelectedDs(datasets.find(d=>d.id===parseInt(e.target.value))||null)}><option value="">— Select —</option>{datasets.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
                       <div><label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:6 }}>Statistical Test</label><select style={selStyle} value={hypoConfig.test} onChange={e=>setHypoConfig(p=>({...p,test:e.target.value}))}><option value="ttest">Independent T-test</option><option value="chi2">Chi-Square</option><option value="anova">One-Way ANOVA</option></select></div>
@@ -1384,7 +1466,7 @@ export default function DataVista() {
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Report Generator</div>
                 <div style={{ fontSize:14,color:T.textSub,marginBottom:18 }}>Download reports from each pipeline stage</div>
-                <div style={{ display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20 }}>
+                <div className="dv-g3">
                   {[
                     {label:"Data Quality",icon:"◈",color:"#3b82f6",desc:"Missing, duplicates, type analysis",fn:()=>generateReport("Data Quality")},
                     {label:"Statistics",icon:"∑",color:"#10b981",desc:"Descriptive stats for all columns",fn:()=>generateReport("Statistics")},
@@ -1413,7 +1495,7 @@ export default function DataVista() {
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Profile</div>
                 <div style={{ fontSize:14,color:T.textSub,marginBottom:18 }}>Saved persistently in your browser</div>
-                <div style={{ display:"grid",gridTemplateColumns:"290px 1fr",gap:18 }}>
+                <div className="dv-profile-grid">
                   <div style={{ ...cardStyle,textAlign:"center" }}>
                     <input type="file" ref={avatarRef} accept="image/*" style={{ display:"none" }} onChange={handleAvatarUpload}/>
                     <div style={{ position:"relative",display:"inline-block",marginBottom:14,cursor:profileEditing?"pointer":"default" }} onClick={()=>profileEditing&&avatarRef.current?.click()}>
