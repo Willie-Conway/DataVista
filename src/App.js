@@ -87,6 +87,16 @@ const COLOR_SCHEMES = {
 };
 const CHART_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899","#84cc16"];
 
+// ─── Map tile styles ───────────────────────────────────────────────────────────
+const MAP_STYLES = {
+  dark:      { name:"Dark Matter",   url:"https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",                       attr:"© CartoDB" },
+  light:     { name:"Positron",      url:"https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",                      attr:"© CartoDB" },
+  voyager:   { name:"Voyager",       url:"https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",             attr:"© CartoDB" },
+  street:    { name:"Street",        url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",                                       attr:"© OpenStreetMap" },
+  topo:      { name:"Topographic",   url:"https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",                                    attr:"© OpenTopoMap" },
+  satellite: { name:"Satellite OSM", url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", attr:"© Esri" },
+};
+
 // ─── Tooltip Components ────────────────────────────────────────────────────────
 const ChartTooltip = ({ active, payload, label, isDark, accent }) => {
   if (!active || !payload?.length) return null;
@@ -138,7 +148,7 @@ const PieTooltip = ({ active, payload, isDark }) => {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function DataVista() {
   // ── Auth & transition state ──────────────────────────────────────────────────
-  const [appPhase, setAppPhase] = useState("booting"); // booting | auth | entering | app | leaving
+  const [appPhase, setAppPhase] = useState("booting");
   const [authMode, setAuthMode] = useState("login");
   const [authFields, setAuthFields] = useState({ name:"", email:"", password:"" });
   const [authError, setAuthError] = useState("");
@@ -169,6 +179,18 @@ export default function DataVista() {
   const [importProgress, setImportProgress] = useState(0);
   const [usageLog, setUsageLog] = useState({});
 
+  // ── Map state ────────────────────────────────────────────────────────────────
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationError, setLocationError] = useState(null);
+  const [mapStyle, setMapStyle] = useState("dark");
+  const [leafletLoaded, setLeafletLoaded] = useState(false);
+  const [locatingUser, setLocatingUser] = useState(false);
+  const mapContainerRef = useRef(null);
+  const leafletMapRef = useRef(null);
+  const tileLayerRef = useRef(null);
+  const markerRef = useRef(null);
+  const pulseMarkerRef = useRef(null);
+
   const fileRef = useRef();
   const avatarRef = useRef();
   const settingsRef = useRef();
@@ -192,7 +214,6 @@ export default function DataVista() {
     authBg:"linear-gradient(135deg,#f1f5f9 0%,#e0f2fe 50%,#f8fafc 100%)",
   };
 
-  // ── Shared styles ─────────────────────────────────────────────────────────────
   const cardStyle = { background:T.card, border:`1px solid ${T.cardBorder}`, borderRadius:14, padding:22 };
   const inpStyle = { background:T.inpBg, border:`1px solid ${T.cardBorder}`, color:T.text, padding:"10px 14px", borderRadius:9, fontFamily:"'Outfit',sans-serif", fontSize:14, width:"100%", outline:"none", transition:"border-color .2s" };
   const selStyle = { ...inpStyle, cursor:"pointer" };
@@ -224,27 +245,17 @@ export default function DataVista() {
     ::-webkit-scrollbar{width:5px;height:5px;}
     ::-webkit-scrollbar-track{background:transparent;}
     ::-webkit-scrollbar-thumb{background:${T.scrollbar};border-radius:4px;}
-
-    /* ── Page-level transitions ── */
     .dv-page{position:absolute;inset:0;will-change:opacity,transform;}
-
-    /* Boot splash */
     @keyframes dv-boot-out{0%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.06)}}
     .dv-boot-exit{animation:dv-boot-out .45s cubic-bezier(.4,0,.2,1) both;}
-
-    /* Auth screen in/out */
     @keyframes dv-auth-in {0%{opacity:0;transform:translateY(18px)}100%{opacity:1;transform:translateY(0)}}
     @keyframes dv-auth-out{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-14px)}}
     .dv-auth-enter{animation:dv-auth-in  .4s cubic-bezier(.22,1,.36,1) both;}
     .dv-auth-exit {animation:dv-auth-out .3s cubic-bezier(.4,0,.2,1)   both;}
-
-    /* App in/out */
     @keyframes dv-app-in {0%{opacity:0;transform:scale(.97)}100%{opacity:1;transform:scale(1)}}
     @keyframes dv-app-out{0%{opacity:1;transform:scale(1)}  100%{opacity:0;transform:scale(.97)}}
     .dv-app-enter{animation:dv-app-in  .45s cubic-bezier(.22,1,.36,1) both;}
     .dv-app-exit {animation:dv-app-out .3s  cubic-bezier(.4,0,.2,1)   both;}
-
-    /* Card / content animations */
     @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
     @keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
     @keyframes spin{to{transform:rotate(360deg)}}
@@ -253,42 +264,44 @@ export default function DataVista() {
     .slide-down{animation:slideDown .18s ease both;}
     .spin{animation:spin .75s linear infinite;display:inline-block;}
     .pulse{animation:pulse 1.5s ease infinite;}
-
-    /* Auth card stagger */
     .auth-field{opacity:0;animation:fadeUp .35s ease both;}
     .auth-field:nth-child(1){animation-delay:.05s}
     .auth-field:nth-child(2){animation-delay:.10s}
     .auth-field:nth-child(3){animation-delay:.15s}
     .auth-field:nth-child(4){animation-delay:.20s}
     .auth-field:nth-child(5){animation-delay:.25s}
-
-    /* Input focus glow */
     input:focus,select:focus,textarea:focus{border-color:${scheme.accent}!important;box-shadow:0 0 0 3px ${scheme.glow};}
-
-    /* Sidebar nav hover */
     .nav-item{transition:background .15s,color .15s,border-left-color .15s;}
     .nav-item:hover{background:${scheme.glow}!important;color:${scheme.accent}!important;}
-
-    /* Button hover */
     .btn-primary:hover{opacity:.88;transform:translateY(-1px);}
     .btn-primary:active{transform:translateY(0);}
-
-    /* Progress */
     .progress-track{background:${T.border};border-radius:999px;height:6px;overflow:hidden;}
     .progress-fill{height:100%;border-radius:999px;transition:width .4s ease;background:linear-gradient(90deg,${scheme.accent},${scheme.accent2});}
-
-    /* Toast */
     @keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
     @keyframes toastOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(20px)}}
     .toast-in{animation:toastIn .3s cubic-bezier(.22,1,.36,1) both;}
     .toast-out{animation:toastOut .25s ease both;}
-
-    /* Shimmer for loading */
     @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
     .shimmer{background:linear-gradient(90deg,${T.border} 25%,${T.hover} 50%,${T.border} 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;}
+
+    /* ── Leaflet overrides ── */
+    .leaflet-container { border-radius: 10px; font-family: 'Outfit', sans-serif; }
+    .leaflet-control-zoom a { background: ${T.card} !important; color: ${T.text} !important; border-color: ${T.cardBorder} !important; }
+    .leaflet-control-zoom a:hover { background: ${T.hover} !important; }
+    .leaflet-control-attribution { background: ${T.card}cc !important; color: ${T.textMuted} !important; font-size: 9px !important; }
+    .leaflet-popup-content-wrapper { background: ${T.card}; border: 1px solid ${T.cardBorder}; color: ${T.text}; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+    .leaflet-popup-tip { background: ${T.card}; }
+
+    /* ── Pulse marker animation ── */
+    @keyframes locPulse { 0%,100%{transform:scale(1);opacity:0.6} 50%{transform:scale(1.8);opacity:0} }
+    .loc-pulse { animation: locPulse 2s ease-out infinite; }
+
+    /* ── Map style chip ── */
+    .map-chip { transition: background .15s, color .15s, border-color .15s; cursor: pointer; }
+    .map-chip:hover { border-color: ${scheme.accent} !important; }
   `;
 
-  // ── BOOT: restore session from localStorage ──────────────────────────────────
+  // ── BOOT ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
     const restore = () => {
       const settings = ls.get("dv-settings");
@@ -298,30 +311,20 @@ export default function DataVista() {
       }
       const ul = ls.get("dv-usage") || {};
       setUsageLog(ul);
-
       const sessionToken = ls.get("dv-session-token");
       if (!sessionToken) { setTimeout(() => setAppPhase("auth"), 600); return; }
-
       const accounts = ls.get("dv-accounts") || [];
       const account = accounts.find(a => a.id === sessionToken.userId);
       if (!account) { ls.del("dv-session-token"); setTimeout(() => setAppPhase("auth"), 600); return; }
-
-      // Valid session — restore everything
       const u = { id:account.id, email:account.email, name:account.name, profile:account.profile||{} };
       setUser(u);
       setProfile(account.profile || { name:account.name, email:account.email, role:"Data Analyst", bio:"", avatar:"" });
-
       const savedDs = ls.get(`dv-datasets-${account.id}`) || [];
-      setDatasets(savedDs);
-      datasetsRef.current = savedDs;
-
+      setDatasets(savedDs); datasetsRef.current = savedDs;
       const sess = ls.get(`dv-sess-${account.id}`);
       if (sess) {
         if (sess.tab) setTab(sess.tab);
-        if (sess.selectedDsId && savedDs.length) {
-          const found = savedDs.find(d => d.id === sess.selectedDsId);
-          if (found) setSelectedDs(found);
-        }
+        if (sess.selectedDsId && savedDs.length) { const found = savedDs.find(d => d.id === sess.selectedDsId); if (found) setSelectedDs(found); }
         if (sess.statsData?.length) setStatsData(sess.statsData);
         if (sess.mlConfig) setMlConfig(sess.mlConfig);
         if (sess.hypoConfig) setHypoConfig(sess.hypoConfig);
@@ -329,27 +332,18 @@ export default function DataVista() {
         if (sess.vizConfig) setVizConfig(sess.vizConfig);
         if (sess.cleanConfig) setCleanConfig(sess.cleanConfig);
       }
-
-      // Short splash delay for smooth feel, then animate into app
       setTimeout(() => setAppPhase("entering"), 700);
       setTimeout(() => setAppPhase("app"), 1200);
     };
     restore();
   }, []);
 
-  // ── Persist session state on every change ─────────────────────────────────────
+  // ── Persist session ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (appPhase !== "app" || !user) return;
-    ls.set(`dv-sess-${user.id}`, {
-      tab, selectedDsId: selectedDs?.id || null,
-      statsData: statsData.slice(0, 50),
-      mlConfig, hypoConfig,
-      chartData: chartData.slice(0, 200),
-      vizConfig, cleanConfig,
-    });
+    ls.set(`dv-sess-${user.id}`, { tab, selectedDsId: selectedDs?.id || null, statsData: statsData.slice(0, 50), mlConfig, hypoConfig, chartData: chartData.slice(0, 200), vizConfig, cleanConfig });
   }, [tab, selectedDs, statsData, mlConfig, hypoConfig, chartData, vizConfig, cleanConfig, user, appPhase]);
 
-  // ── Persist settings ──────────────────────────────────────────────────────────
   const saveSettings = (patch) => {
     const next = { isDark, schemeKey, ...patch };
     if (patch.isDark !== undefined) setIsDark(patch.isDark);
@@ -357,7 +351,6 @@ export default function DataVista() {
     ls.set("dv-settings", next);
   };
 
-  // ── Usage tracking ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (appPhase !== "app" || !user) return;
     const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -369,44 +362,149 @@ export default function DataVista() {
     });
   }, [tab, appPhase, user]);
 
-  // ── Close settings on outside click ──────────────────────────────────────────
   useEffect(() => {
     const h = (e) => { if (settingsRef.current && !settingsRef.current.contains(e.target)) setSettingsOpen(false); };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // ── Toast ─────────────────────────────────────────────────────────────────────
+  // ── Load Leaflet CSS + JS from CDN ───────────────────────────────────────────
+  useEffect(() => {
+    if (window.L) { setLeafletLoaded(true); return; }
+    if (document.getElementById("leaflet-css")) {
+      const check = setInterval(() => { if (window.L) { setLeafletLoaded(true); clearInterval(check); } }, 100);
+      return () => clearInterval(check);
+    }
+    const link = document.createElement("link");
+    link.id = "leaflet-css"; link.rel = "stylesheet";
+    link.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+    document.head.appendChild(link);
+    const script = document.createElement("script");
+    script.id = "leaflet-js";
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+    script.onload = () => setLeafletLoaded(true);
+    document.head.appendChild(script);
+  }, []);
+
+  // ── Request geolocation ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (appPhase !== "app") return;
+    setLocatingUser(true);
+    if (!navigator.geolocation) {
+      setLocationError("Geolocation not supported");
+      setUserLocation({ lat:40.7128, lng:-74.006, fallback:true });
+      setLocatingUser(false);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setUserLocation({ lat:pos.coords.latitude, lng:pos.coords.longitude, fallback:false });
+        setLocationError(null);
+        setLocatingUser(false);
+      },
+      () => {
+        setLocationError("Location access denied — showing New York");
+        setUserLocation({ lat:40.7128, lng:-74.006, fallback:true });
+        setLocatingUser(false);
+      },
+      { timeout:10000, maximumAge:60000 }
+    );
+  }, [appPhase]);
+
+  // ── Initialize Leaflet map ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!leafletLoaded || !userLocation || !mapContainerRef.current || tab !== "dashboard") return;
+    const L = window.L;
+    if (leafletMapRef.current) {
+      leafletMapRef.current.invalidateSize();
+      return;
+    }
+    const map = L.map(mapContainerRef.current, { zoomControl:true, attributionControl:true }).setView([userLocation.lat, userLocation.lng], 13);
+    const style = MAP_STYLES[mapStyle];
+    tileLayerRef.current = L.tileLayer(style.url, { attribution:style.attr, maxZoom:19 }).addTo(map);
+
+    // Pulsing circle marker
+    const pulseIcon = L.divIcon({
+      className:"",
+      html:`<div style="position:relative;width:22px;height:22px">
+        <div class="loc-pulse" style="position:absolute;inset:-6px;border-radius:50%;background:${scheme.accent};opacity:0.5;"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:${scheme.accent};border:3px solid #fff;box-shadow:0 2px 12px ${scheme.glow};position:absolute;inset:0;"></div>
+      </div>`,
+      iconSize:[22,22], iconAnchor:[11,11]
+    });
+
+    markerRef.current = L.marker([userLocation.lat, userLocation.lng], { icon:pulseIcon })
+      .addTo(map)
+      .bindPopup(`<div style="font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;padding:2px 0">📍 ${userLocation.fallback ? "New York (default)" : "Your Location"}</div><div style="font-size:11px;color:#94a3b8;margin-top:3px">${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}</div>`)
+      .openPopup();
+
+    leafletMapRef.current = map;
+    setTimeout(() => map.invalidateSize(), 100);
+  }, [leafletLoaded, userLocation, tab]);
+
+  // ── Swap tile layer when mapStyle changes ─────────────────────────────────────
+  useEffect(() => {
+    if (!leafletMapRef.current || !window.L) return;
+    const L = window.L;
+    if (tileLayerRef.current) { tileLayerRef.current.remove(); }
+    const style = MAP_STYLES[mapStyle];
+    tileLayerRef.current = L.tileLayer(style.url, { attribution:style.attr, maxZoom:19 }).addTo(leafletMapRef.current);
+  }, [mapStyle]);
+
+  // ── Rebuild marker when scheme changes ────────────────────────────────────────
+  useEffect(() => {
+    if (!leafletMapRef.current || !userLocation || !window.L) return;
+    const L = window.L;
+    if (markerRef.current) { markerRef.current.remove(); }
+    const pulseIcon = L.divIcon({
+      className:"",
+      html:`<div style="position:relative;width:22px;height:22px">
+        <div class="loc-pulse" style="position:absolute;inset:-6px;border-radius:50%;background:${scheme.accent};opacity:0.5;"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:${scheme.accent};border:3px solid #fff;box-shadow:0 2px 12px ${scheme.glow};position:absolute;inset:0;"></div>
+      </div>`,
+      iconSize:[22,22], iconAnchor:[11,11]
+    });
+    markerRef.current = L.marker([userLocation.lat, userLocation.lng], { icon:pulseIcon })
+      .addTo(leafletMapRef.current)
+      .bindPopup(`<div style="font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;padding:2px 0">📍 ${userLocation.fallback ? "New York (default)" : "Your Location"}</div><div style="font-size:11px;color:#94a3b8;margin-top:3px">${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}</div>`);
+  }, [schemeKey]);
+
+  // ── Cleanup on unmount ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      if (leafletMapRef.current) { leafletMapRef.current.remove(); leafletMapRef.current = null; }
+    };
+  }, []);
+
+  // ── Invalidate map size when switching back to dashboard ──────────────────────
+  useEffect(() => {
+    if (tab === "dashboard" && leafletMapRef.current) {
+      setTimeout(() => leafletMapRef.current?.invalidateSize(), 120);
+    }
+  }, [tab]);
+
+  // ── Toast ──────────────────────────────────────────────────────────────────────
   const notify = (msg, type = "success") => {
     setToast({ msg, type, id: Date.now() });
     setTimeout(() => setToast(null), 3500);
   };
 
-  // ── AUTH: login / signup ──────────────────────────────────────────────────────
+  // ── Auth ──────────────────────────────────────────────────────────────────────
   async function handleAuth() {
     setAuthError(""); setAuthLoading(true);
-    await new Promise(r => setTimeout(r, 420)); // slight delay for UX
-
+    await new Promise(r => setTimeout(r, 420));
     const accounts = ls.get("dv-accounts") || [];
-
     if (authMode === "login") {
       const found = accounts.find(a => a.email === authFields.email && a.password === authFields.password);
       if (!found) { setAuthError("Invalid email or password."); setAuthLoading(false); return; }
-
       const u = { id:found.id, email:found.email, name:found.name, profile:found.profile||{} };
-      setUser(u);
-      setProfile(found.profile || { name:found.name, email:found.email, role:"Data Analyst", bio:"", avatar:"" });
-
+      setUser(u); setProfile(found.profile || { name:found.name, email:found.email, role:"Data Analyst", bio:"", avatar:"" });
       const savedDs = ls.get(`dv-datasets-${found.id}`) || [];
       setDatasets(savedDs); datasetsRef.current = savedDs;
-
       const sess = ls.get(`dv-sess-${found.id}`);
       if (sess) {
         if (sess.tab) setTab(sess.tab);
-        if (sess.selectedDsId && savedDs.length) {
-          const ds = savedDs.find(d => d.id === sess.selectedDsId);
-          if (ds) setSelectedDs(ds);
-        }
+        if (sess.selectedDsId && savedDs.length) { const ds = savedDs.find(d => d.id === sess.selectedDsId); if (ds) setSelectedDs(ds); }
         if (sess.statsData?.length) setStatsData(sess.statsData);
         if (sess.mlConfig) setMlConfig(sess.mlConfig);
         if (sess.hypoConfig) setHypoConfig(sess.hypoConfig);
@@ -414,64 +512,46 @@ export default function DataVista() {
         if (sess.vizConfig) setVizConfig(sess.vizConfig);
         if (sess.cleanConfig) setCleanConfig(sess.cleanConfig);
       }
-
-      // Persist session token
       ls.set("dv-session-token", { userId: found.id, loginAt: Date.now() });
       setAuthLoading(false);
       setAppPhase("entering");
       setTimeout(() => { setAppPhase("app"); notify(`Welcome back, ${found.name}! 👋`); }, 500);
-
     } else {
       if (!authFields.name.trim()) { setAuthError("Name is required."); setAuthLoading(false); return; }
       if (!authFields.email.trim()) { setAuthError("Email is required."); setAuthLoading(false); return; }
       if (!authFields.password || authFields.password.length < 4) { setAuthError("Password must be at least 4 characters."); setAuthLoading(false); return; }
       if (accounts.find(a => a.email === authFields.email)) { setAuthError("This email is already registered."); setAuthLoading(false); return; }
-
-      const newAcct = {
-        id: Date.now(), name: authFields.name.trim(), email: authFields.email.trim(),
-        password: authFields.password,
-        profile: { name:authFields.name.trim(), email:authFields.email.trim(), role:"Data Analyst", bio:"", avatar:"" }
-      };
-      accounts.push(newAcct);
-      ls.set("dv-accounts", accounts);
-
+      const newAcct = { id: Date.now(), name: authFields.name.trim(), email: authFields.email.trim(), password: authFields.password, profile: { name:authFields.name.trim(), email:authFields.email.trim(), role:"Data Analyst", bio:"", avatar:"" } };
+      accounts.push(newAcct); ls.set("dv-accounts", accounts);
       const u = { id:newAcct.id, email:newAcct.email, name:newAcct.name, profile:newAcct.profile };
-      setUser(u); setProfile(newAcct.profile);
-      setDatasets([]); datasetsRef.current = [];
+      setUser(u); setProfile(newAcct.profile); setDatasets([]); datasetsRef.current = [];
       ls.set("dv-session-token", { userId: newAcct.id, loginAt: Date.now() });
-
-      setAuthLoading(false);
-      setAppPhase("entering");
+      setAuthLoading(false); setAppPhase("entering");
       setTimeout(() => { setAppPhase("app"); notify(`Welcome to DataVista, ${newAcct.name}! 🎉`); }, 500);
     }
   }
 
-  // ── LOGOUT: smooth animated transition ───────────────────────────────────────
   function logout() {
     setAppPhase("leaving");
+    if (leafletMapRef.current) { leafletMapRef.current.remove(); leafletMapRef.current = null; }
     setTimeout(() => {
       ls.del("dv-session-token");
-      setUser(null);
-      setDatasets([]); datasetsRef.current = [];
-      setSelectedDs(null); setStatsData([]); setChartData([]);
+      setUser(null); setDatasets([]); datasetsRef.current = []; setSelectedDs(null);
+      setStatsData([]); setChartData([]);
       setMlConfig({ target:"", algorithm:"linear", trained:false, metrics:{} });
       setHypoConfig({ test:"ttest", var1:"", var2:"", result:null });
-      setTab("dashboard");
-      setAuthFields({ name:"", email:"", password:"" });
-      setAuthError("");
-      setProfileEditing(false);
-      setSettingsOpen(false);
+      setTab("dashboard"); setAuthFields({ name:"", email:"", password:"" });
+      setAuthError(""); setProfileEditing(false); setSettingsOpen(false);
+      setUserLocation(null); setLocationError(null);
       setAppPhase("auth");
     }, 350);
   }
 
-  // ── Save datasets ─────────────────────────────────────────────────────────────
   const saveDatasets = useCallback((ds) => {
     setDatasets(ds); datasetsRef.current = ds;
     if (user) ls.set(`dv-datasets-${user.id}`, ds);
   }, [user]);
 
-  // ── File import ───────────────────────────────────────────────────────────────
   function handleFileImport(e) {
     const file = e.target.files[0]; if (!file) return;
     setImportProgress(10);
@@ -480,27 +560,17 @@ export default function DataVista() {
       setImportProgress(55);
       try {
         let headers, rows, name = file.name;
-        if (file.name.endsWith(".json")) {
-          const parsed = JSON.parse(ev.target.result);
-          rows = Array.isArray(parsed) ? parsed : [parsed];
-          headers = Object.keys(rows[0] || {});
-        } else {
-          const p = parseCSV(ev.target.result); headers = p.headers; rows = p.rows;
-        }
+        if (file.name.endsWith(".json")) { const parsed = JSON.parse(ev.target.result); rows = Array.isArray(parsed) ? parsed : [parsed]; headers = Object.keys(rows[0] || {}); }
+        else { const p = parseCSV(ev.target.result); headers = p.headers; rows = p.rows; }
         const ds = { id:Date.now(), name, source:"file", headers, rows:rows.slice(0,5000), created:new Date().toISOString() };
-        setImportProgress(90);
-        saveDatasets([...datasetsRef.current, ds]);
-        setSelectedDs(ds);
-        setImportProgress(100);
-        setTimeout(() => setImportProgress(0), 900);
+        setImportProgress(90); saveDatasets([...datasetsRef.current, ds]); setSelectedDs(ds);
+        setImportProgress(100); setTimeout(() => setImportProgress(0), 900);
         notify(`"${name}" imported — ${rows.length.toLocaleString()} rows`);
       } catch(err) { notify("Parse error: "+err.message, "error"); setImportProgress(0); }
     };
-    reader.readAsText(file);
-    e.target.value = "";
+    reader.readAsText(file); e.target.value = "";
   }
 
-  // ── Export ────────────────────────────────────────────────────────────────────
   function exportDataset(ds, fmt) {
     if (!ds) return;
     if (fmt==="csv") download(`${ds.name.replace(/\.[^.]+$/,"")}_export.csv`, toCSV(ds.headers, ds.rows), "text/csv");
@@ -508,85 +578,50 @@ export default function DataVista() {
     notify(`Exported as ${fmt.toUpperCase()}`);
   }
 
-  // ── Live APIs ──────────────────────────────────────────────────────────────────
   async function loadWB() {
     setLoadingApi(p=>({...p,wb:true}));
-    try {
-      const rows = await APIs.worldBank(wbIndicator, 40);
-      const ds = { id:Date.now(), name:`WorldBank_${wbIndicator}`, source:"worldbank", headers:Object.keys(rows[0]||{}), rows, created:new Date().toISOString() };
-      setLiveData(p=>({...p,wb:ds})); notify("World Bank data loaded");
-    } catch(e) { notify("WB error: "+e.message, "error"); }
+    try { const rows = await APIs.worldBank(wbIndicator, 40); const ds = { id:Date.now(), name:`WorldBank_${wbIndicator}`, source:"worldbank", headers:Object.keys(rows[0]||{}), rows, created:new Date().toISOString() }; setLiveData(p=>({...p,wb:ds})); notify("World Bank data loaded"); }
+    catch(e) { notify("WB error: "+e.message, "error"); }
     setLoadingApi(p=>({...p,wb:false}));
   }
   async function loadWeather() {
     setLoadingApi(p=>({...p,weather:true}));
-    try {
-      const res = await APIs.weather(weatherCity.lat, weatherCity.lon, weatherCity.name);
-      const ds = { id:Date.now(), name:`Weather_${res.city}`, source:"openmeteo", headers:res.headers, rows:res.rows, created:new Date().toISOString() };
-      setLiveData(p=>({...p,weather:ds})); notify(`Weather for ${res.city} loaded`);
-    } catch(e) { notify("Weather error: "+e.message, "error"); }
+    try { const res = await APIs.weather(weatherCity.lat, weatherCity.lon, weatherCity.name); const ds = { id:Date.now(), name:`Weather_${res.city}`, source:"openmeteo", headers:res.headers, rows:res.rows, created:new Date().toISOString() }; setLiveData(p=>({...p,weather:ds})); notify(`Weather for ${res.city} loaded`); }
+    catch(e) { notify("Weather error: "+e.message, "error"); }
     setLoadingApi(p=>({...p,weather:false}));
   }
   async function loadCrypto() {
     setLoadingApi(p=>({...p,crypto:true}));
-    try {
-      const rows = await APIs.crypto(30);
-      const ds = { id:Date.now(), name:"CoinGecko_Markets", source:"coingecko", headers:Object.keys(rows[0]), rows, created:new Date().toISOString() };
-      setLiveData(p=>({...p,crypto:ds})); notify("Crypto data loaded");
-    } catch(e) { notify("CoinGecko error: "+e.message, "error"); }
+    try { const rows = await APIs.crypto(30); const ds = { id:Date.now(), name:"CoinGecko_Markets", source:"coingecko", headers:Object.keys(rows[0]), rows, created:new Date().toISOString() }; setLiveData(p=>({...p,crypto:ds})); notify("Crypto data loaded"); }
+    catch(e) { notify("CoinGecko error: "+e.message, "error"); }
     setLoadingApi(p=>({...p,crypto:false}));
   }
-  function addLiveDsToWorkspace(ds) {
-    saveDatasets([...datasetsRef.current, ds]);
-    setSelectedDs(ds); setTab("explorer");
-    notify(`"${ds.name}" added to workspace`);
-  }
+  function addLiveDsToWorkspace(ds) { saveDatasets([...datasetsRef.current, ds]); setSelectedDs(ds); setTab("explorer"); notify(`"${ds.name}" added to workspace`); }
 
-  // ── Data cleaning ─────────────────────────────────────────────────────────────
   function applyClean() {
     const ds = selectedDs; if (!ds) { notify("Select a dataset first","error"); return; }
     let rows = [...ds.rows]; const headers = ds.headers;
-    if (cleanConfig.removeDups) {
-      const seen = new Set();
-      rows = rows.filter(r => { const k=JSON.stringify(r); if(seen.has(k))return false; seen.add(k); return true; });
-    }
-    if (cleanConfig.missing==="drop") {
-      rows = rows.filter(r => headers.every(h => r[h]!==""&&r[h]!==null&&r[h]!==undefined));
-    } else if (cleanConfig.missing==="mean"||cleanConfig.missing==="median") {
-      numericCols(headers,rows).forEach(h => {
-        const vals=rows.map(r=>parseFloat(r[h])).filter(v=>!isNaN(v)).sort((a,b)=>a-b);
-        const fill=cleanConfig.missing==="mean"?vals.reduce((a,b)=>a+b,0)/vals.length:vals[Math.floor(vals.length/2)];
-        rows=rows.map(r=>({...r,[h]:(r[h]===""||r[h]===null||r[h]===undefined)?parseFloat(fill.toFixed(3)):r[h]}));
-      });
-    }
-    if (cleanConfig.outlier==="zscore") {
-      numericCols(headers,rows).forEach(h => {
-        const vals=rows.map(r=>parseFloat(r[h])).filter(v=>!isNaN(v));
-        const mean=vals.reduce((a,b)=>a+b,0)/vals.length;
-        const std=Math.sqrt(vals.reduce((a,b)=>a+(b-mean)**2,0)/vals.length);
-        rows=rows.filter(r=>{const v=parseFloat(r[h]);return isNaN(v)||Math.abs((v-mean)/std)<=3;});
-      });
-    }
+    if (cleanConfig.removeDups) { const seen = new Set(); rows = rows.filter(r => { const k=JSON.stringify(r); if(seen.has(k))return false; seen.add(k); return true; }); }
+    if (cleanConfig.missing==="drop") { rows = rows.filter(r => headers.every(h => r[h]!==""&&r[h]!==null&&r[h]!==undefined)); }
+    else if (cleanConfig.missing==="mean"||cleanConfig.missing==="median") { numericCols(headers,rows).forEach(h => { const vals=rows.map(r=>parseFloat(r[h])).filter(v=>!isNaN(v)).sort((a,b)=>a-b); const fill=cleanConfig.missing==="mean"?vals.reduce((a,b)=>a+b,0)/vals.length:vals[Math.floor(vals.length/2)]; rows=rows.map(r=>({...r,[h]:(r[h]===""||r[h]===null||r[h]===undefined)?parseFloat(fill.toFixed(3)):r[h]})); }); }
+    if (cleanConfig.outlier==="zscore") { numericCols(headers,rows).forEach(h => { const vals=rows.map(r=>parseFloat(r[h])).filter(v=>!isNaN(v)); const mean=vals.reduce((a,b)=>a+b,0)/vals.length; const std=Math.sqrt(vals.reduce((a,b)=>a+(b-mean)**2,0)/vals.length); rows=rows.filter(r=>{const v=parseFloat(r[h]);return isNaN(v)||Math.abs((v-mean)/std)<=3;}); }); }
     const cleaned = {...ds, id:Date.now(), name:ds.name.replace(/\.[^.]+$/,"")+"_cleaned.csv", rows, created:new Date().toISOString()};
     saveDatasets([...datasetsRef.current, cleaned]); setSelectedDs(cleaned);
     notify(`Cleaned: ${rows.length.toLocaleString()} rows remain`);
   }
 
-  // ── Stats ─────────────────────────────────────────────────────────────────────
   function runStats() {
     if (!selectedDs) { notify("Select a dataset first","error"); return; }
     setStatsData(numericCols(selectedDs.headers, selectedDs.rows).map(h=>({column:h,...descStats(h,selectedDs.rows)})).filter(x=>x.count));
     notify("Statistics calculated");
   }
 
-  // ── Viz ───────────────────────────────────────────────────────────────────────
   function buildChart() {
     if (!selectedDs||!vizConfig.x) { notify("Select dataset + X axis","error"); return; }
     setChartData(selectedDs.rows.slice(0,200).map(r=>({ name:String(r[vizConfig.x]??""), value:parseFloat(r[vizConfig.y])||0, x:parseFloat(r[vizConfig.x])||0, y:parseFloat(r[vizConfig.y])||0 })));
     notify("Chart generated");
   }
 
-  // ── ML ────────────────────────────────────────────────────────────────────────
   function trainModel() {
     if (!selectedDs||!mlConfig.target) { notify("Select dataset + target","error"); return; }
     const numH = numericCols(selectedDs.headers, selectedDs.rows).filter(h=>h!==mlConfig.target);
@@ -597,170 +632,85 @@ export default function DataVista() {
     notify("Model trained!");
   }
 
-  // ── Hypothesis ────────────────────────────────────────────────────────────────
   function runHypo() {
     if (!selectedDs||!hypoConfig.var1) { notify("Select variable 1","error"); return; }
     const vals1=selectedDs.rows.map(r=>parseFloat(r[hypoConfig.var1])).filter(v=>!isNaN(v));
     const vals2=hypoConfig.var2?selectedDs.rows.map(r=>parseFloat(r[hypoConfig.var2])).filter(v=>!isNaN(v)):[];
     const n1=vals1.length, mean1=vals1.reduce((a,b)=>a+b,0)/n1;
     let result={};
-    if (hypoConfig.test==="ttest"&&vals2.length) {
-      const n2=vals2.length, mean2=vals2.reduce((a,b)=>a+b,0)/n2;
-      const v1=vals1.reduce((a,b)=>a+(b-mean1)**2,0)/(n1-1), v2=vals2.reduce((a,b)=>a+(b-mean2)**2,0)/(n2-1);
-      const t=(mean1-mean2)/Math.sqrt(v1/n1+v2/n2), p=2*(1-Math.min(0.9999,Math.abs(t)/5));
-      result={test:"Independent T-test",stat:t.toFixed(4),p:p.toFixed(4),reject:p<0.05};
-    } else if (hypoConfig.test==="anova") {
-      const F=(2.1+Math.random()*4).toFixed(4),p=(Math.random()*0.1).toFixed(4);
-      result={test:"One-Way ANOVA",stat:F,p,reject:parseFloat(p)<0.05};
-    } else {
-      const chi=(mean1*2.4).toFixed(4),p=(Math.random()*0.1).toFixed(4);
-      result={test:"Chi-Square",stat:chi,p,reject:parseFloat(p)<0.05};
-    }
+    if (hypoConfig.test==="ttest"&&vals2.length) { const n2=vals2.length, mean2=vals2.reduce((a,b)=>a+b,0)/n2; const v1=vals1.reduce((a,b)=>a+(b-mean1)**2,0)/(n1-1), v2=vals2.reduce((a,b)=>a+(b-mean2)**2,0)/(n2-1); const t=(mean1-mean2)/Math.sqrt(v1/n1+v2/n2), p=2*(1-Math.min(0.9999,Math.abs(t)/5)); result={test:"Independent T-test",stat:t.toFixed(4),p:p.toFixed(4),reject:p<0.05}; }
+    else if (hypoConfig.test==="anova") { const F=(2.1+Math.random()*4).toFixed(4),p=(Math.random()*0.1).toFixed(4); result={test:"One-Way ANOVA",stat:F,p,reject:parseFloat(p)<0.05}; }
+    else { const chi=(mean1*2.4).toFixed(4),p=(Math.random()*0.1).toFixed(4); result={test:"Chi-Square",stat:chi,p,reject:parseFloat(p)<0.05}; }
     setHypoConfig(p=>({...p,result})); notify("Hypothesis test complete");
   }
 
-  // ── Report ────────────────────────────────────────────────────────────────────
   function generateReport(section) {
     let lines=[`DataVista Report — ${section}`,`Generated: ${new Date().toLocaleString()}`,"=".repeat(60),""];
     const ds = selectedDs;
-    if (section==="Data Quality"&&ds) {
-      lines.push(`Dataset: ${ds.name}`,`Rows: ${ds.rows.length}  Columns: ${ds.headers.length}`,"");
-      ds.headers.forEach(h=>{const m=ds.rows.filter(r=>r[h]===""||r[h]===null||r[h]===undefined).length;lines.push(`  ${h}: ${m} missing (${((m/ds.rows.length)*100).toFixed(1)}%)`);});
-    } else if (section==="Statistics"&&statsData.length) {
-      lines.push(`Dataset: ${ds?.name}`,"");
-      statsData.forEach(s=>lines.push(`Column: ${s.column}`,`  Count:${s.count} Mean:${s.mean} Median:${s.median} Std:${s.std} Min:${s.min} Max:${s.max}`,""));
-    } else if (section==="ML"&&mlConfig.trained) {
-      lines.push(`Algorithm: ${mlConfig.algorithm}`,`Target: ${mlConfig.target}`,"",`  R²: ${mlConfig.metrics.r2}`,`  RMSE: ${mlConfig.metrics.rmse}`,`  MAE: ${mlConfig.metrics.mae}`,`  Samples: ${mlConfig.metrics.samples}`);
-    } else if (section==="Hypothesis"&&hypoConfig.result) {
-      const r=hypoConfig.result;
-      lines.push(`Test: ${r.test}`,`Var1: ${hypoConfig.var1}`,hypoConfig.var2?`Var2: ${hypoConfig.var2}`:"","",`  Statistic: ${r.stat}`,`  P-value: ${r.p}`,`  Conclusion: ${r.reject?"Reject H₀":"Fail to reject H₀"}`);
-    } else lines.push("No data available. Run the analysis first.");
+    if (section==="Data Quality"&&ds) { lines.push(`Dataset: ${ds.name}`,`Rows: ${ds.rows.length}  Columns: ${ds.headers.length}`,""); ds.headers.forEach(h=>{const m=ds.rows.filter(r=>r[h]===""||r[h]===null||r[h]===undefined).length;lines.push(`  ${h}: ${m} missing (${((m/ds.rows.length)*100).toFixed(1)}%)`);});}
+    else if (section==="Statistics"&&statsData.length) { lines.push(`Dataset: ${ds?.name}`,""); statsData.forEach(s=>lines.push(`Column: ${s.column}`,`  Count:${s.count} Mean:${s.mean} Median:${s.median} Std:${s.std} Min:${s.min} Max:${s.max}`,"")); }
+    else if (section==="ML"&&mlConfig.trained) { lines.push(`Algorithm: ${mlConfig.algorithm}`,`Target: ${mlConfig.target}`,"",`  R²: ${mlConfig.metrics.r2}`,`  RMSE: ${mlConfig.metrics.rmse}`,`  MAE: ${mlConfig.metrics.mae}`,`  Samples: ${mlConfig.metrics.samples}`); }
+    else if (section==="Hypothesis"&&hypoConfig.result) { const r=hypoConfig.result; lines.push(`Test: ${r.test}`,`Var1: ${hypoConfig.var1}`,hypoConfig.var2?`Var2: ${hypoConfig.var2}`:"","",`  Statistic: ${r.stat}`,`  P-value: ${r.p}`,`  Conclusion: ${r.reject?"Reject H₀":"Fail to reject H₀"}`); }
+    else lines.push("No data available. Run the analysis first.");
     const text=lines.join("\n"); setReport(text);
     download(`DataVista_${section.replace(/ /g,"_")}_Report.txt`,text);
     notify(`${section} report downloaded`);
   }
 
-  // ── Profile ───────────────────────────────────────────────────────────────────
   function saveProfile() {
-    const updated = {...user, profile};
-    setUser(updated); ls.set("dv-session-token", { userId:user.id, loginAt:Date.now() });
-    const accounts = ls.get("dv-accounts") || [];
-    const idx = accounts.findIndex(a=>a.id===user.id);
+    const updated = {...user, profile}; setUser(updated); ls.set("dv-session-token", { userId:user.id, loginAt:Date.now() });
+    const accounts = ls.get("dv-accounts") || []; const idx = accounts.findIndex(a=>a.id===user.id);
     if (idx>=0) { accounts[idx].profile=profile; ls.set("dv-accounts", accounts); }
     setProfileEditing(false); notify("Profile saved");
   }
   function handleAvatarUpload(e) {
     const file=e.target.files[0]; if(!file) return;
-    const reader=new FileReader();
-    reader.onload=ev=>setProfile(p=>({...p,avatar:ev.target.result}));
-    reader.readAsDataURL(file);
+    const reader=new FileReader(); reader.onload=ev=>setProfile(p=>({...p,avatar:ev.target.result})); reader.readAsDataURL(file);
   }
 
   const ds = selectedDs;
   const usageDays = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   const usageChartData = usageDays.map(d=>({ day:d, sessions:usageLog[d]||0 }));
 
-  // ══════════════════════════════════════════════════════════════════════════════
-  // ── BOOT SPLASH ──────────────────────────────────────────────────────────────
-  // ══════════════════════════════════════════════════════════════════════════════
+  // ── BOOT SPLASH ───────────────────────────────────────────────────────────────
   if (appPhase === "booting") return (
     <>
       <style>{css}</style>
       <div style={{ position:"fixed", inset:0, background:T.authBg, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:20 }}>
-        {/* Ambient glow */}
         <div style={{ position:"absolute", width:500, height:500, borderRadius:"50%", background:`radial-gradient(circle, ${scheme.glow} 0%, transparent 70%)`, pointerEvents:"none" }}/>
         <div style={{ position:"relative", textAlign:"center" }}>
-          <div style={{ fontSize:42, fontWeight:800, color:T.text, letterSpacing:"-.04em", fontFamily:"'Outfit',sans-serif" }}>
-            Data<span style={{color:scheme.accent}}>Vista</span>
-          </div>
+          <div style={{ fontSize:42, fontWeight:800, color:T.text, letterSpacing:"-.04em", fontFamily:"'Outfit',sans-serif" }}>Data<span style={{color:scheme.accent}}>Vista</span></div>
           <div style={{ marginTop:18, display:"flex", gap:6, justifyContent:"center" }}>
-            {[0,1,2].map(i=>(
-              <div key={i} style={{ width:8, height:8, borderRadius:"50%", background:scheme.accent, animation:`pulse 1.2s ease ${i*0.2}s infinite` }}/>
-            ))}
+            {[0,1,2].map(i=>(<div key={i} style={{ width:8, height:8, borderRadius:"50%", background:scheme.accent, animation:`pulse 1.2s ease ${i*0.2}s infinite` }}/>))}
           </div>
         </div>
       </div>
     </>
   );
 
-  // ══════════════════════════════════════════════════════════════════════════════
-  // ── AUTH SCREEN ──────────────────────────────────────────────────────────────
-  // ══════════════════════════════════════════════════════════════════════════════
+  // ── AUTH SCREEN ───────────────────────────────────────────────────────────────
   if (appPhase === "auth") return (
     <>
       <style>{css}</style>
       <div className="dv-auth-enter" style={{ position:"fixed", inset:0, background:T.authBg, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-        {/* Background grid decoration */}
         <div style={{ position:"absolute", inset:0, backgroundImage:`linear-gradient(${T.border} 1px, transparent 1px), linear-gradient(90deg, ${T.border} 1px, transparent 1px)`, backgroundSize:"44px 44px", opacity:.4, pointerEvents:"none" }}/>
-        {/* Ambient orb */}
         <div style={{ position:"absolute", width:600, height:600, borderRadius:"50%", background:`radial-gradient(circle, ${scheme.glow} 0%, transparent 65%)`, pointerEvents:"none", transform:"translate(-10%,-10%)" }}/>
-
         <div style={{ width:"100%", maxWidth:440, position:"relative" }}>
-          {/* Logo */}
           <div className="auth-field" style={{ textAlign:"center", marginBottom:32 }}>
-            <div style={{ fontSize:40, fontWeight:800, color:T.text, letterSpacing:"-.05em", fontFamily:"'Outfit',sans-serif" }}>
-              Data<span style={{color:scheme.accent}}>Vista</span>
-            </div>
-            <p style={{ color:T.textSub, fontSize:14, marginTop:8, fontWeight:400 }}>
-              {authMode === "login" ? "Turn raw data into decisions, instantly and beautifully" : "Create your free analytics account"}
-            </p>
+            <div style={{ fontSize:40, fontWeight:800, color:T.text, letterSpacing:"-.05em", fontFamily:"'Outfit',sans-serif" }}>Data<span style={{color:scheme.accent}}>Vista</span></div>
+            <p style={{ color:T.textSub, fontSize:14, marginTop:8, fontWeight:400 }}>{authMode === "login" ? "Turn raw data into decisions, instantly and beautifully" : "Create your free analytics account"}</p>
           </div>
-
-          {/* Card */}
           <div style={{ background:T.card, border:`1px solid ${T.cardBorder}`, borderRadius:18, padding:"34px 36px", boxShadow:`0 0 60px ${scheme.glow}, 0 24px 48px rgba(0,0,0,${isDark?.3:.1})` }}>
-            {/* Mode tabs */}
             <div className="auth-field" style={{ display:"flex", gap:6, marginBottom:28, background:T.surface, borderRadius:11, padding:4 }}>
-              {["login","signup"].map(m=>(
-                <button key={m} onClick={()=>{ setAuthMode(m); setAuthError(""); }} style={{ flex:1, padding:"8px 0", borderRadius:8, border:"none", fontFamily:"'Outfit',sans-serif", fontWeight:600, fontSize:14, cursor:"pointer", transition:"all .2s cubic-bezier(.22,1,.36,1)", background:authMode===m?scheme.accent:"transparent", color:authMode===m?"#fff":T.textSub, boxShadow:authMode===m?`0 2px 12px ${scheme.glow}`:"none" }}>
-                  {m==="login" ? "Sign In" : "Create Account"}
-                </button>
-              ))}
+              {["login","signup"].map(m=>(<button key={m} onClick={()=>{ setAuthMode(m); setAuthError(""); }} style={{ flex:1, padding:"8px 0", borderRadius:8, border:"none", fontFamily:"'Outfit',sans-serif", fontWeight:600, fontSize:14, cursor:"pointer", transition:"all .2s cubic-bezier(.22,1,.36,1)", background:authMode===m?scheme.accent:"transparent", color:authMode===m?"#fff":T.textSub, boxShadow:authMode===m?`0 2px 12px ${scheme.glow}`:"none" }}>{m==="login" ? "Sign In" : "Create Account"}</button>))}
             </div>
-
             <div style={{ display:"flex", flexDirection:"column", gap:15 }}>
-              {authMode==="signup" && (
-                <div className="auth-field">
-                  <label style={{ fontSize:12, color:T.textSub, display:"block", marginBottom:6, fontWeight:600, textTransform:"uppercase", letterSpacing:".06em" }}>Full Name</label>
-                  <input style={inpStyle} value={authFields.name} onChange={e=>setAuthFields(p=>({...p,name:e.target.value}))}
-                    placeholder="Jane Smith" onKeyDown={e=>e.key==="Enter"&&handleAuth()} autoFocus/>
-                </div>
-              )}
-              <div className="auth-field">
-                <label style={{ fontSize:12, color:T.textSub, display:"block", marginBottom:6, fontWeight:600, textTransform:"uppercase", letterSpacing:".06em" }}>Email</label>
-                <input style={inpStyle} type="email" value={authFields.email} onChange={e=>setAuthFields(p=>({...p,email:e.target.value}))}
-                  placeholder="jane@example.com" onKeyDown={e=>e.key==="Enter"&&handleAuth()} autoFocus={authMode==="login"}/>
-              </div>
-              <div className="auth-field">
-                <label style={{ fontSize:12, color:T.textSub, display:"block", marginBottom:6, fontWeight:600, textTransform:"uppercase", letterSpacing:".06em" }}>Password</label>
-                <input style={inpStyle} type="password" value={authFields.password} onChange={e=>setAuthFields(p=>({...p,password:e.target.value}))}
-                  placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&handleAuth()}/>
-              </div>
-
-              {authError && (
-                <div className="auth-field fade-up" style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:9, padding:"10px 14px", color:"#f87171", fontSize:13, display:"flex", alignItems:"center", gap:8 }}>
-                  <span>⚠</span> {authError}
-                </div>
-              )}
-
-              <div className="auth-field">
-                <button
-                  className="btn-primary"
-                  onClick={handleAuth}
-                  disabled={authLoading}
-                  style={{ ...btnPrimary, width:"100%", padding:"12px", fontSize:15, marginTop:4, display:"flex", alignItems:"center", justifyContent:"center", gap:8, opacity:authLoading?.7:1 }}>
-                  {authLoading ? (
-                    <><span className="spin" style={{fontSize:16}}>↻</span> {authMode==="login"?"Signing in…":"Creating account…"}</>
-                  ) : (
-                    authMode==="login" ? "Sign In →" : "Create Account →"
-                  )}
-                </button>
-              </div>
-
-              {authMode==="login" && (
-                <div style={{ textAlign:"center", fontSize:12, color:T.textMuted, marginTop:4 }}>
-                  Your session is saved in this browser — you'll return right where you left off.
-                </div>
-              )}
+              {authMode==="signup" && (<div className="auth-field"><label style={{ fontSize:12, color:T.textSub, display:"block", marginBottom:6, fontWeight:600, textTransform:"uppercase", letterSpacing:".06em" }}>Full Name</label><input style={inpStyle} value={authFields.name} onChange={e=>setAuthFields(p=>({...p,name:e.target.value}))} placeholder="Jane Smith" onKeyDown={e=>e.key==="Enter"&&handleAuth()} autoFocus/></div>)}
+              <div className="auth-field"><label style={{ fontSize:12, color:T.textSub, display:"block", marginBottom:6, fontWeight:600, textTransform:"uppercase", letterSpacing:".06em" }}>Email</label><input style={inpStyle} type="email" value={authFields.email} onChange={e=>setAuthFields(p=>({...p,email:e.target.value}))} placeholder="jane@example.com" onKeyDown={e=>e.key==="Enter"&&handleAuth()} autoFocus={authMode==="login"}/></div>
+              <div className="auth-field"><label style={{ fontSize:12, color:T.textSub, display:"block", marginBottom:6, fontWeight:600, textTransform:"uppercase", letterSpacing:".06em" }}>Password</label><input style={inpStyle} type="password" value={authFields.password} onChange={e=>setAuthFields(p=>({...p,password:e.target.value}))} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&handleAuth()}/></div>
+              {authError && (<div className="auth-field fade-up" style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:9, padding:"10px 14px", color:"#f87171", fontSize:13, display:"flex", alignItems:"center", gap:8 }}><span>⚠</span> {authError}</div>)}
+              <div className="auth-field"><button className="btn-primary" onClick={handleAuth} disabled={authLoading} style={{ ...btnPrimary, width:"100%", padding:"12px", fontSize:15, marginTop:4, display:"flex", alignItems:"center", justifyContent:"center", gap:8, opacity:authLoading?.7:1 }}>{authLoading ? (<><span className="spin" style={{fontSize:16}}>↻</span> {authMode==="login"?"Signing in…":"Creating account…"}</>) : (authMode==="login" ? "Sign In →" : "Create Account →")}</button></div>
+              {authMode==="login" && (<div style={{ textAlign:"center", fontSize:12, color:T.textMuted, marginTop:4 }}>Your session is saved in this browser — you'll return right where you left off.</div>)}
             </div>
           </div>
         </div>
@@ -768,16 +718,12 @@ export default function DataVista() {
     </>
   );
 
-  // ══════════════════════════════════════════════════════════════════════════════
-  // ── MAIN APP ─────────────────────────────────────────────────────────────────
-  // ══════════════════════════════════════════════════════════════════════════════
+  // ── MAIN APP ──────────────────────────────────────────────────────────────────
   const appClass = appPhase === "entering" ? "dv-app-enter" : appPhase === "leaving" ? "dv-app-exit" : "";
 
   return (
     <>
       <style>{css}</style>
-
-      {/* Toast */}
       {toast && (
         <div className="toast-in" style={{ position:"fixed", top:20, right:20, zIndex:9999, background:toast.type==="error"?(isDark?"#7f1d1d":"#fee2e2"):(isDark?"#052e16":"#dcfce7"), border:`1px solid ${toast.type==="error"?"#ef4444":"#16a34a"}`, color:toast.type==="error"?(isDark?"#fca5a5":"#dc2626"):(isDark?"#86efac":"#166534"), padding:"11px 18px", borderRadius:10, fontSize:14, fontWeight:500, boxShadow:"0 8px 30px rgba(0,0,0,0.3)", maxWidth:360, display:"flex", alignItems:"center", gap:8 }}>
           <span style={{ fontSize:15 }}>{toast.type==="error"?"✕":"✓"}</span> {toast.msg}
@@ -786,7 +732,7 @@ export default function DataVista() {
 
       <div className={appClass} style={{ display:"flex", height:"100vh", background:T.bg, overflow:"hidden" }}>
 
-        {/* ── Sidebar ───────────────────────────────────────────────────────── */}
+        {/* ── Sidebar ─────────────────────────────────────────────────────── */}
         <div style={{ width:222, flexShrink:0, background:T.sidebar, borderRight:`1px solid ${T.border}`, display:"flex", flexDirection:"column", overflowY:"auto" }}>
           <div style={{ padding:"22px 18px 14px", borderBottom:`1px solid ${T.border}` }}>
             <div style={{ fontSize:22, fontWeight:800, color:T.text, letterSpacing:"-.04em" }}>Data<span style={{color:scheme.accent}}>Vista</span></div>
@@ -799,26 +745,19 @@ export default function DataVista() {
               </button>
             ))}
           </nav>
-
-          {/* User footer */}
           <div style={{ padding:"14px 12px", borderTop:`1px solid ${T.border}` }}>
             <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:10 }}>
-              {profile.avatar
-                ? <img src={profile.avatar} style={{ width:32, height:32, borderRadius:"50%", objectFit:"cover", border:`2px solid ${scheme.accent}` }}/>
-                : <div style={{ width:32, height:32, borderRadius:"50%", background:`linear-gradient(135deg,${scheme.accent},${scheme.accent2})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700, color:"#fff" }}>{user.name?.[0]?.toUpperCase()}</div>
-              }
+              {profile.avatar ? <img src={profile.avatar} style={{ width:32, height:32, borderRadius:"50%", objectFit:"cover", border:`2px solid ${scheme.accent}` }}/> : <div style={{ width:32, height:32, borderRadius:"50%", background:`linear-gradient(135deg,${scheme.accent},${scheme.accent2})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700, color:"#fff" }}>{user.name?.[0]?.toUpperCase()}</div>}
               <div style={{ minWidth:0 }}>
                 <div style={{ fontSize:12, fontWeight:600, color:T.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user.name}</div>
                 <div style={{ fontSize:10, color:T.textMuted }}>{profile.role}</div>
               </div>
             </div>
-            <button onClick={logout} style={{ ...btnSecondary, width:"100%", fontSize:12, padding:"7px", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-              <span>↩</span> Sign Out
-            </button>
+            <button onClick={logout} style={{ ...btnSecondary, width:"100%", fontSize:12, padding:"7px", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><span>↩</span> Sign Out</button>
           </div>
         </div>
 
-        {/* ── Main content ──────────────────────────────────────────────────── */}
+        {/* ── Main content ─────────────────────────────────────────────────── */}
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
           {/* Topbar */}
@@ -827,8 +766,6 @@ export default function DataVista() {
               <div style={{ fontSize:17, fontWeight:700, color:T.text }}>{navItems.find(n=>n.id===tab)?.label}</div>
               {ds && <span style={{ fontSize:11, background:scheme.glow, color:scheme.accent, border:`1px solid ${scheme.accent}40`, padding:"2px 10px", borderRadius:20, fontWeight:600 }}>{ds.name}</span>}
             </div>
-
-            {/* Settings */}
             <div style={{ position:"relative" }} ref={settingsRef}>
               <button onClick={()=>setSettingsOpen(o=>!o)} style={{ background:settingsOpen?scheme.glow:T.hover, border:`1px solid ${settingsOpen?scheme.accent:T.border}`, color:settingsOpen?scheme.accent:T.textSub, borderRadius:9, width:38, height:38, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"4px", cursor:"pointer", transition:".2s" }}>
                 {[16,11,16].map((w,i)=><div key={i} style={{ width:w, height:2, background:"currentColor", borderRadius:2 }}/>)}
@@ -840,9 +777,7 @@ export default function DataVista() {
                     <div style={{ fontSize:12, color:T.textSub, fontWeight:600, marginBottom:8 }}>Display Mode</div>
                     <div style={{ display:"flex", gap:8 }}>
                       {[{v:false,icon:"☀",label:"Light"},{v:true,icon:"◑",label:"Dark"}].map(m=>(
-                        <button key={String(m.v)} onClick={()=>saveSettings({isDark:m.v,schemeKey})} style={{ flex:1, padding:"9px 0", borderRadius:9, border:`1.5px solid ${isDark===m.v?scheme.accent:T.border}`, background:isDark===m.v?scheme.glow:T.surface, color:isDark===m.v?scheme.accent:T.textSub, fontFamily:"'Outfit',sans-serif", fontWeight:600, fontSize:13, cursor:"pointer", transition:".15s", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-                          {m.icon} {m.label}
-                        </button>
+                        <button key={String(m.v)} onClick={()=>saveSettings({isDark:m.v,schemeKey})} style={{ flex:1, padding:"9px 0", borderRadius:9, border:`1.5px solid ${isDark===m.v?scheme.accent:T.border}`, background:isDark===m.v?scheme.glow:T.surface, color:isDark===m.v?scheme.accent:T.textSub, fontFamily:"'Outfit',sans-serif", fontWeight:600, fontSize:13, cursor:"pointer", transition:".15s", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>{m.icon} {m.label}</button>
                       ))}
                     </div>
                   </div>
@@ -865,11 +800,13 @@ export default function DataVista() {
           {/* Page */}
           <div style={{ flex:1, overflowY:"auto", padding:"26px 30px" }}>
 
-            {/* ── DASHBOARD ─────────────────────────────────────────────────── */}
+            {/* ── DASHBOARD ─────────────────────────────────────────────── */}
             {tab==="dashboard" && (
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4,letterSpacing:"-.02em" }}>Good {new Date().getHours()<12?"morning":new Date().getHours()<18?"afternoon":"evening"}, {user.name.split(" ")[0]} 👋</div>
                 <div style={{ fontSize:14,color:T.textSub,marginBottom:20 }}>Here's your data workspace at a glance.</div>
+
+                {/* Stat cards */}
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:18 }}>
                   {[
                     {label:"Datasets",value:datasets.length,color:scheme.accent,icon:"⬢",sub:"in workspace"},
@@ -889,6 +826,8 @@ export default function DataVista() {
                     </div>
                   ))}
                 </div>
+
+                {/* Charts row */}
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:18 }}>
                   <div style={cardStyle}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:12 }}>
@@ -925,6 +864,75 @@ export default function DataVista() {
                     ))}
                   </div>
                 </div>
+
+                {/* ── Live Location Map Card ─────────────────────────────── */}
+                <div style={{ ...cardStyle, marginBottom:18, padding:0, overflow:"hidden" }}>
+                  {/* Map card header */}
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 18px", borderBottom:`1px solid ${T.cardBorder}` }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <div style={{ width:8, height:8, borderRadius:"50%", background: userLocation ? "#10b981" : (locatingUser ? "#f59e0b" : "#ef4444"), boxShadow: userLocation ? "0 0 6px #10b981" : "none", flexShrink:0 }}/>
+                      <div>
+                        <div style={{ fontWeight:700, color:T.text, fontSize:14 }}>Live Location</div>
+                        <div style={{ fontSize:11, color:T.textMuted, marginTop:1 }}>
+                          {locatingUser ? "Detecting location…" :
+                           locationError ? locationError :
+                           userLocation ? `${userLocation.lat.toFixed(4)}°, ${userLocation.lng.toFixed(4)}°` : "Waiting…"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Map style selector — chips */}
+                    <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                      <span style={{ fontSize:11, color:T.textMuted, marginRight:2 }}>Map:</span>
+                      {Object.entries(MAP_STYLES).map(([key, style]) => (
+                        <button
+                          key={key}
+                          className="map-chip"
+                          onClick={() => setMapStyle(key)}
+                          style={{
+                            padding:"4px 10px",
+                            borderRadius:20,
+                            border:`1.5px solid ${mapStyle === key ? scheme.accent : T.border2}`,
+                            background: mapStyle === key ? scheme.glow : T.surface,
+                            color: mapStyle === key ? scheme.accent : T.textMuted,
+                            fontSize:11,
+                            fontWeight: mapStyle === key ? 700 : 500,
+                            fontFamily:"'Outfit',sans-serif",
+                          }}
+                        >
+                          {style.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Map container */}
+                  <div style={{ position:"relative", height:280 }}>
+                    {/* Loading overlay */}
+                    {(!leafletLoaded || !userLocation) && (
+                      <div style={{ position:"absolute", inset:0, zIndex:10, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", background:T.surface, gap:10 }}>
+                        {locatingUser ? (
+                          <>
+                            <span className="spin" style={{ fontSize:22, color:scheme.accent }}>↻</span>
+                            <span style={{ fontSize:13, color:T.textSub }}>Detecting your location…</span>
+                          </>
+                        ) : !leafletLoaded ? (
+                          <>
+                            <span className="pulse" style={{ fontSize:13, color:T.textSub }}>Loading map…</span>
+                          </>
+                        ) : null}
+                      </div>
+                    )}
+
+                    {/* Leaflet renders here */}
+                    <div
+                      ref={mapContainerRef}
+                      style={{ width:"100%", height:"100%", opacity: (leafletLoaded && userLocation) ? 1 : 0, transition:"opacity .4s ease" }}
+                    />
+                  </div>
+                </div>
+
+                {/* Datasets table */}
                 <div style={cardStyle}>
                   <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14 }}>
                     <div style={{ fontWeight:700,color:T.text,fontSize:14 }}>Workspace Datasets</div>
@@ -959,7 +967,7 @@ export default function DataVista() {
               </div>
             )}
 
-            {/* ── DATA SOURCES ──────────────────────────────────────────────── */}
+            {/* ── DATA SOURCES ──────────────────────────────────────────── */}
             {tab==="sources" && (
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Data Sources</div>
@@ -1017,16 +1025,13 @@ export default function DataVista() {
               </div>
             )}
 
-            {/* ── EXPLORER ──────────────────────────────────────────────────── */}
+            {/* ── EXPLORER ──────────────────────────────────────────────── */}
             {tab==="explorer" && (
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Data Explorer</div>
                 <div style={{ fontSize:14,color:T.textSub,marginBottom:18 }}>Inspect your dataset row by row</div>
                 <div style={{ display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center" }}>
-                  <select style={{ ...selStyle,maxWidth:280 }} value={selectedDs?.id||""} onChange={e=>setSelectedDs(datasets.find(d=>d.id===parseInt(e.target.value))||null)}>
-                    <option value="">— Select Dataset —</option>
-                    {datasets.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
+                  <select style={{ ...selStyle,maxWidth:280 }} value={selectedDs?.id||""} onChange={e=>setSelectedDs(datasets.find(d=>d.id===parseInt(e.target.value))||null)}><option value="">— Select Dataset —</option>{datasets.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select>
                   {ds&&<><span style={{ background:T.hover,color:T.textSub,border:`1px solid ${T.border}`,padding:"3px 10px",borderRadius:20,fontSize:12 }}>{ds.rows?.length?.toLocaleString()} rows</span><span style={{ background:T.hover,color:T.textSub,border:`1px solid ${T.border}`,padding:"3px 10px",borderRadius:20,fontSize:12 }}>{ds.headers?.length} cols</span><button onClick={()=>exportDataset(ds,"csv")} style={btnSecondary}>↓ CSV</button><button onClick={()=>exportDataset(ds,"json")} style={btnSecondary}>↓ JSON</button></>}
                 </div>
                 {ds
@@ -1036,7 +1041,7 @@ export default function DataVista() {
               </div>
             )}
 
-            {/* ── CLEANING ──────────────────────────────────────────────────── */}
+            {/* ── CLEANING ──────────────────────────────────────────────── */}
             {tab==="cleaning" && (
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Data Cleaning</div>
@@ -1047,12 +1052,7 @@ export default function DataVista() {
                     <div style={{ marginBottom:12 }}><label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:6 }}>Active Dataset</label><select style={selStyle} value={selectedDs?.id||""} onChange={e=>setSelectedDs(datasets.find(d=>d.id===parseInt(e.target.value))||null)}><option value="">— Select —</option>{datasets.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
                     <div style={{ marginBottom:12 }}>
                       <label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:7 }}>Missing Values</label>
-                      {["drop","mean","median","keep"].map(v=>(
-                        <label key={v} style={{ display:"flex",alignItems:"center",gap:7,padding:"4px 0",cursor:"pointer",fontSize:13,color:cleanConfig.missing===v?scheme.accent:T.textSub }}>
-                          <input type="radio" name="missing" checked={cleanConfig.missing===v} onChange={()=>setCleanConfig(p=>({...p,missing:v}))} style={{ accentColor:scheme.accent }}/>
-                          {{drop:"Drop rows with missing values",mean:"Fill numeric with mean",median:"Fill numeric with median",keep:"Keep as-is"}[v]}
-                        </label>
-                      ))}
+                      {["drop","mean","median","keep"].map(v=>(<label key={v} style={{ display:"flex",alignItems:"center",gap:7,padding:"4px 0",cursor:"pointer",fontSize:13,color:cleanConfig.missing===v?scheme.accent:T.textSub }}><input type="radio" name="missing" checked={cleanConfig.missing===v} onChange={()=>setCleanConfig(p=>({...p,missing:v}))} style={{ accentColor:scheme.accent }}/>{{"drop":"Drop rows with missing values","mean":"Fill numeric with mean","median":"Fill numeric with median","keep":"Keep as-is"}[v]}</label>))}
                     </div>
                     <div style={{ marginBottom:12 }}><label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:6 }}>Outlier Removal</label><select style={selStyle} value={cleanConfig.outlier} onChange={e=>setCleanConfig(p=>({...p,outlier:e.target.value}))}><option value="none">None</option><option value="zscore">Z-score (|z|&gt;3)</option></select></div>
                     <label style={{ display:"flex",alignItems:"center",gap:7,fontSize:13,color:T.textSub,cursor:"pointer",marginBottom:16 }}><input type="checkbox" checked={cleanConfig.removeDups} onChange={e=>setCleanConfig(p=>({...p,removeDups:e.target.checked}))} style={{ accentColor:scheme.accent }}/>Remove duplicate rows</label>
@@ -1066,7 +1066,7 @@ export default function DataVista() {
               </div>
             )}
 
-            {/* ── PREPROCESSING ─────────────────────────────────────────────── */}
+            {/* ── PREPROCESSING ─────────────────────────────────────────── */}
             {tab==="preprocessing" && (
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Preprocessing</div>
@@ -1093,7 +1093,7 @@ export default function DataVista() {
               </div>
             )}
 
-            {/* ── STATISTICS ────────────────────────────────────────────────── */}
+            {/* ── STATISTICS ────────────────────────────────────────────── */}
             {tab==="stats" && (
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Descriptive Statistics</div>
@@ -1109,7 +1109,7 @@ export default function DataVista() {
               </div>
             )}
 
-            {/* ── VISUALIZATION ─────────────────────────────────────────────── */}
+            {/* ── VISUALIZATION ─────────────────────────────────────────── */}
             {tab==="viz" && (
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Visualization</div>
@@ -1144,7 +1144,7 @@ export default function DataVista() {
               </div>
             )}
 
-            {/* ── ML ────────────────────────────────────────────────────────── */}
+            {/* ── ML ────────────────────────────────────────────────────── */}
             {tab==="ml" && (
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Machine Learning</div>
@@ -1164,9 +1164,7 @@ export default function DataVista() {
                     {mlConfig.trained?(
                       <>
                         <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:11,marginBottom:14 }}>
-                          {[["R²",mlConfig.metrics.r2,scheme.accent],["RMSE",mlConfig.metrics.rmse,"#f59e0b"],["MAE",mlConfig.metrics.mae,"#10b981"],["Samples",mlConfig.metrics.samples,"#8b5cf6"]].map(([k,v,c])=>(
-                            <div key={k} style={{ background:T.surface,borderRadius:10,padding:13,border:`1px solid ${T.border}` }}><div style={{ fontSize:11,color:T.textSub,marginBottom:3 }}>{k}</div><div style={{ fontSize:20,fontWeight:700,color:c,fontFamily:"'JetBrains Mono',monospace" }}>{v}</div></div>
-                          ))}
+                          {[["R²",mlConfig.metrics.r2,scheme.accent],["RMSE",mlConfig.metrics.rmse,"#f59e0b"],["MAE",mlConfig.metrics.mae,"#10b981"],["Samples",mlConfig.metrics.samples,"#8b5cf6"]].map(([k,v,c])=>(<div key={k} style={{ background:T.surface,borderRadius:10,padding:13,border:`1px solid ${T.border}` }}><div style={{ fontSize:11,color:T.textSub,marginBottom:3 }}>{k}</div><div style={{ fontSize:20,fontWeight:700,color:c,fontFamily:"'JetBrains Mono',monospace" }}>{v}</div></div>))}
                         </div>
                         <div style={{ marginBottom:9 }}><div style={{ display:"flex",justifyContent:"space-between",fontSize:12,color:T.textSub,marginBottom:5 }}><span>R² Score</span><span style={{ fontFamily:"monospace" }}>{mlConfig.metrics.r2}</span></div><div className="progress-track"><div className="progress-fill" style={{ width:`${parseFloat(mlConfig.metrics.r2)*100}%` }}/></div></div>
                         <div style={{ fontSize:12,color:T.textMuted }}>Algo: <span style={{ color:scheme.accent,fontFamily:"monospace" }}>{mlConfig.algorithm}</span> · Target: <span style={{ color:scheme.accent,fontFamily:"monospace" }}>{mlConfig.target}</span></div>
@@ -1177,7 +1175,7 @@ export default function DataVista() {
               </div>
             )}
 
-            {/* ── HYPOTHESIS ────────────────────────────────────────────────── */}
+            {/* ── HYPOTHESIS ────────────────────────────────────────────── */}
             {tab==="hypothesis" && (
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Hypothesis Testing</div>
@@ -1214,7 +1212,7 @@ export default function DataVista() {
               </div>
             )}
 
-            {/* ── REPORTS ───────────────────────────────────────────────────── */}
+            {/* ── REPORTS ───────────────────────────────────────────────── */}
             {tab==="reports" && (
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Report Generator</div>
@@ -1243,7 +1241,7 @@ export default function DataVista() {
               </div>
             )}
 
-            {/* ── PROFILE ───────────────────────────────────────────────────── */}
+            {/* ── PROFILE ───────────────────────────────────────────────── */}
             {tab==="profile" && (
               <div className="fade-up">
                 <div style={{ fontSize:21,fontWeight:700,color:T.text,marginBottom:4 }}>Profile</div>
@@ -1252,10 +1250,7 @@ export default function DataVista() {
                   <div style={{ ...cardStyle,textAlign:"center" }}>
                     <input type="file" ref={avatarRef} accept="image/*" style={{ display:"none" }} onChange={handleAvatarUpload}/>
                     <div style={{ position:"relative",display:"inline-block",marginBottom:14,cursor:profileEditing?"pointer":"default" }} onClick={()=>profileEditing&&avatarRef.current?.click()}>
-                      {profile.avatar
-                        ?<img src={profile.avatar} style={{ width:90,height:90,borderRadius:"50%",objectFit:"cover",border:`3px solid ${scheme.accent}` }}/>
-                        :<div style={{ width:90,height:90,borderRadius:"50%",background:`linear-gradient(135deg,${scheme.accent},${scheme.accent2})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,fontWeight:700,color:"#fff",border:`3px solid ${scheme.accent}` }}>{(profile.name||user.name)?.[0]?.toUpperCase()}</div>
-                      }
+                      {profile.avatar?<img src={profile.avatar} style={{ width:90,height:90,borderRadius:"50%",objectFit:"cover",border:`3px solid ${scheme.accent}` }}/>:<div style={{ width:90,height:90,borderRadius:"50%",background:`linear-gradient(135deg,${scheme.accent},${scheme.accent2})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,fontWeight:700,color:"#fff",border:`3px solid ${scheme.accent}` }}>{(profile.name||user.name)?.[0]?.toUpperCase()}</div>}
                       {profileEditing&&<div style={{ position:"absolute",bottom:0,right:0,background:scheme.accent,borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12 }}>📷</div>}
                     </div>
                     <div style={{ fontWeight:700,color:T.text,fontSize:16,marginBottom:3 }}>{profile.name||user.name}</div>
@@ -1271,24 +1266,17 @@ export default function DataVista() {
                   <div style={cardStyle}>
                     <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18 }}>
                       <div style={{ fontWeight:700,color:T.text,fontSize:14 }}>{profileEditing?"Edit Profile":"Profile Details"}</div>
-                      {!profileEditing
-                        ?<button onClick={()=>setProfileEditing(true)} style={{ background:scheme.glow,color:scheme.accent,border:`1px solid ${scheme.accent}`,padding:"6px 14px",borderRadius:8,fontFamily:"'Outfit',sans-serif",fontWeight:600,fontSize:13,cursor:"pointer" }}>✎ Edit</button>
-                        :<div style={{ display:"flex",gap:7 }}><button onClick={()=>setProfileEditing(false)} style={btnSecondary}>Cancel</button><button onClick={saveProfile} style={{ background:"#10b981",color:"#fff",border:"none",padding:"7px 14px",borderRadius:8,fontFamily:"'Outfit',sans-serif",fontWeight:600,fontSize:13,cursor:"pointer" }}>✓ Save</button></div>
-                      }
+                      {!profileEditing?<button onClick={()=>setProfileEditing(true)} style={{ background:scheme.glow,color:scheme.accent,border:`1px solid ${scheme.accent}`,padding:"6px 14px",borderRadius:8,fontFamily:"'Outfit',sans-serif",fontWeight:600,fontSize:13,cursor:"pointer" }}>✎ Edit</button>:<div style={{ display:"flex",gap:7 }}><button onClick={()=>setProfileEditing(false)} style={btnSecondary}>Cancel</button><button onClick={saveProfile} style={{ background:"#10b981",color:"#fff",border:"none",padding:"7px 14px",borderRadius:8,fontFamily:"'Outfit',sans-serif",fontWeight:600,fontSize:13,cursor:"pointer" }}>✓ Save</button></div>}
                     </div>
                     {profileEditing?(
                       <div style={{ display:"flex",flexDirection:"column",gap:13 }}>
-                        {[["Display Name","name","text","Jane Smith"],["Email","email","email","jane@example.com"],["Role / Title","role","text","Data Scientist"]].map(([label,field,type,ph])=>(
-                          <div key={field}><label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:5 }}>{label}</label><input style={inpStyle} type={type} value={profile[field]||""} onChange={e=>setProfile(p=>({...p,[field]:e.target.value}))} placeholder={ph}/></div>
-                        ))}
+                        {[["Display Name","name","text","Jane Smith"],["Email","email","email","jane@example.com"],["Role / Title","role","text","Data Scientist"]].map(([label,field,type,ph])=>(<div key={field}><label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:5 }}>{label}</label><input style={inpStyle} type={type} value={profile[field]||""} onChange={e=>setProfile(p=>({...p,[field]:e.target.value}))} placeholder={ph}/></div>))}
                         <div><label style={{ fontSize:13,color:T.textSub,display:"block",marginBottom:5 }}>Bio</label><textarea style={{ ...inpStyle,resize:"vertical",minHeight:75 }} rows={3} value={profile.bio||""} onChange={e=>setProfile(p=>({...p,bio:e.target.value}))} placeholder="Tell us about yourself..."/></div>
                         <div style={{ fontSize:11,color:T.textMuted,padding:"7px 10px",background:T.surface,borderRadius:7,border:`1px solid ${T.border}` }}>📷 Click the avatar on the left to change your profile picture</div>
                       </div>
                     ):(
                       <div style={{ display:"flex",flexDirection:"column" }}>
-                        {[["Display Name",profile.name||user.name],["Email",profile.email||user.email],["Role",profile.role||"—"],["Bio",profile.bio||"No bio yet."],["Member Since",new Date(user.id).toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})]].map(([label,val])=>(
-                          <div key={label} style={{ padding:"11px 0",borderBottom:`1px solid ${T.border}` }}><div style={{ fontSize:10,color:T.textMuted,fontWeight:700,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4 }}>{label}</div><div style={{ fontSize:14,color:T.text,lineHeight:1.6 }}>{val}</div></div>
-                        ))}
+                        {[["Display Name",profile.name||user.name],["Email",profile.email||user.email],["Role",profile.role||"—"],["Bio",profile.bio||"No bio yet."],["Member Since",new Date(user.id).toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})]].map(([label,val])=>(<div key={label} style={{ padding:"11px 0",borderBottom:`1px solid ${T.border}` }}><div style={{ fontSize:10,color:T.textMuted,fontWeight:700,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4 }}>{label}</div><div style={{ fontSize:14,color:T.text,lineHeight:1.6 }}>{val}</div></div>))}
                       </div>
                     )}
                   </div>
