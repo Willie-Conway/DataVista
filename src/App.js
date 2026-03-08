@@ -179,6 +179,12 @@ export default function DataVista() {
   const [importProgress, setImportProgress] = useState(0);
   const [usageLog, setUsageLog] = useState({});
 
+  // ── Dashboard weather widget state ───────────────────────────────────────────
+  const [dashWeather, setDashWeather] = useState(null);
+  const [dashWeatherLoading, setDashWeatherLoading] = useState(false);
+  const [dashWeatherCity, setDashWeatherCity] = useState("New York");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   // ── Map state ────────────────────────────────────────────────────────────────
   const [userLocation, setUserLocation] = useState(null);
   const [locationError, setLocationError] = useState(null);
@@ -483,6 +489,42 @@ export default function DataVista() {
     }
   }, [tab]);
 
+  // ── Dashboard weather fetch ────────────────────────────────────────────────────
+  const DASH_WEATHER_CITIES = [
+    {name:"New York",lat:40.71,lon:-74.01},{name:"London",lat:51.51,lon:-0.13},
+    {name:"Tokyo",lat:35.68,lon:139.69},{name:"Sydney",lat:-33.87,lon:151.21},
+    {name:"Dubai",lat:25.2,lon:55.27},{name:"Paris",lat:48.85,lon:2.35},
+  ];
+  async function fetchDashWeather(cityObj) {
+    setDashWeatherLoading(true);
+    try {
+      const city = cityObj || DASH_WEATHER_CITIES.find(c=>c.name===dashWeatherCity) || DASH_WEATHER_CITIES[0];
+      const res = await APIs.weather(city.lat, city.lon, city.name);
+      // Build hourly for next 24 h and daily highs/lows
+      const now = new Date();
+      const hourly = res.rows.filter(r => new Date(`${r.date}T${r.time}`).getTime() >= now.getTime()).slice(0,24);
+      const current = res.rows.find(r => new Date(`${r.date}T${r.time}`).getTime() >= now.getTime()) || res.rows[0];
+      // daily summary (next 5 days)
+      const byDay = {};
+      res.rows.forEach(r => { if(!byDay[r.date]) byDay[r.date]=[]; byDay[r.date].push(r.temperature_2m); });
+      const daily = Object.entries(byDay).slice(0,5).map(([date,temps])=>({ date, high:Math.max(...temps).toFixed(1), low:Math.min(...temps).toFixed(1) }));
+      setDashWeather({ city:city.name, current, hourly, daily, humidity:current?.relative_humidity_2m, wind:current?.wind_speed_10m?.toFixed(1) });
+      setDashWeatherCity(city.name);
+    } catch(e) { notify("Weather error: "+e.message,"error"); }
+    setDashWeatherLoading(false);
+  }
+
+  // ── Auto-fetch dashboard weather on app load ──────────────────────────────────
+  useEffect(() => {
+    if (appPhase === "app") fetchDashWeather();
+  }, [appPhase]);
+
+  // ── Page refresh handler ──────────────────────────────────────────────────────
+  function handleRefresh() {
+    setIsRefreshing(true);
+    setTimeout(() => window.location.reload(), 400);
+  }
+
   // ── Toast ──────────────────────────────────────────────────────────────────────
   const notify = (msg, type = "success") => {
     setToast({ msg, type, id: Date.now() });
@@ -644,16 +686,54 @@ export default function DataVista() {
     setHypoConfig(p=>({...p,result})); notify("Hypothesis test complete");
   }
 
-  function generateReport(section) {
-    let lines=[`DataVista Report — ${section}`,`Generated: ${new Date().toLocaleString()}`,"=".repeat(60),""];
+  function buildSectionLines(section) {
     const ds = selectedDs;
-    if (section==="Data Quality"&&ds) { lines.push(`Dataset: ${ds.name}`,`Rows: ${ds.rows.length}  Columns: ${ds.headers.length}`,""); ds.headers.forEach(h=>{const m=ds.rows.filter(r=>r[h]===""||r[h]===null||r[h]===undefined).length;lines.push(`  ${h}: ${m} missing (${((m/ds.rows.length)*100).toFixed(1)}%)`);});}
-    else if (section==="Statistics"&&statsData.length) { lines.push(`Dataset: ${ds?.name}`,""); statsData.forEach(s=>lines.push(`Column: ${s.column}`,`  Count:${s.count} Mean:${s.mean} Median:${s.median} Std:${s.std} Min:${s.min} Max:${s.max}`,"")); }
-    else if (section==="ML"&&mlConfig.trained) { lines.push(`Algorithm: ${mlConfig.algorithm}`,`Target: ${mlConfig.target}`,"",`  R²: ${mlConfig.metrics.r2}`,`  RMSE: ${mlConfig.metrics.rmse}`,`  MAE: ${mlConfig.metrics.mae}`,`  Samples: ${mlConfig.metrics.samples}`); }
-    else if (section==="Hypothesis"&&hypoConfig.result) { const r=hypoConfig.result; lines.push(`Test: ${r.test}`,`Var1: ${hypoConfig.var1}`,hypoConfig.var2?`Var2: ${hypoConfig.var2}`:"","",`  Statistic: ${r.stat}`,`  P-value: ${r.p}`,`  Conclusion: ${r.reject?"Reject H₀":"Fail to reject H₀"}`); }
-    else lines.push("No data available. Run the analysis first.");
-    const text=lines.join("\n"); setReport(text);
-    download(`DataVista_${section.replace(/ /g,"_")}_Report.txt`,text);
+    const lines = [];
+    if (section==="Data Quality") {
+      if (!ds) { lines.push("  [No dataset selected]"); return lines; }
+      lines.push(`Dataset: ${ds.name}`,`Rows: ${ds.rows.length}  Columns: ${ds.headers.length}`,"");
+      ds.headers.forEach(h=>{const m=ds.rows.filter(r=>r[h]===""||r[h]===null||r[h]===undefined).length;lines.push(`  ${h}: ${m} missing (${((m/ds.rows.length)*100).toFixed(1)}%)`);});
+    } else if (section==="Statistics") {
+      if (!statsData.length) { lines.push("  [No stats computed — run Statistics tab first]"); return lines; }
+      lines.push(`Dataset: ${ds?.name||"—"}`,"");
+      statsData.forEach(s=>lines.push(`Column: ${s.column}`,`  Count:${s.count} Mean:${s.mean} Median:${s.median} Std:${s.std} Min:${s.min} Max:${s.max}`,""));
+    } else if (section==="ML") {
+      if (!mlConfig.trained) { lines.push("  [No model trained — run ML Models tab first]"); return lines; }
+      lines.push(`Algorithm: ${mlConfig.algorithm}`,`Target: ${mlConfig.target}`,"",`  R²:      ${mlConfig.metrics.r2}`,`  RMSE:    ${mlConfig.metrics.rmse}`,`  MAE:     ${mlConfig.metrics.mae}`,`  Samples: ${mlConfig.metrics.samples}`);
+    } else if (section==="Hypothesis") {
+      if (!hypoConfig.result) { lines.push("  [No hypothesis test run — run Hypothesis tab first]"); return lines; }
+      const r=hypoConfig.result;
+      lines.push(`Test: ${r.test}`,`Var1: ${hypoConfig.var1}`,hypoConfig.var2?`Var2: ${hypoConfig.var2}`:"","",`  Statistic:   ${r.stat}`,`  P-value:     ${r.p}`,`  Conclusion:  ${r.reject?"Reject H₀ (p < 0.05)":"Fail to reject H₀ (p ≥ 0.05)"}`);
+    }
+    return lines;
+  }
+
+  function generateReport(section) {
+    const sep = "=".repeat(60);
+    let lines;
+    if (section === "Full Pipeline") {
+      lines = [
+        `DataVista Full Pipeline Report`,
+        `Generated: ${new Date().toLocaleString()}`,
+        sep, "",
+        "┌─ SECTION 1: DATA QUALITY ─────────────────────────────────",
+        "", ...buildSectionLines("Data Quality"), "",
+        "┌─ SECTION 2: STATISTICS ───────────────────────────────────",
+        "", ...buildSectionLines("Statistics"), "",
+        "┌─ SECTION 3: ML MODEL ─────────────────────────────────────",
+        "", ...buildSectionLines("ML"), "",
+        "┌─ SECTION 4: HYPOTHESIS TEST ──────────────────────────────",
+        "", ...buildSectionLines("Hypothesis"), "",
+        sep,
+        "End of Report",
+      ];
+    } else {
+      lines = [`DataVista Report — ${section}`,`Generated: ${new Date().toLocaleString()}`,sep,"", ...buildSectionLines(section)];
+      if (!buildSectionLines(section).length) lines.push("No data available. Run the analysis first.");
+    }
+    const text = lines.join("\n");
+    setReport(text);
+    download(`DataVista_${section.replace(/ /g,"_")}_Report.txt`, text);
     notify(`${section} report downloaded`);
   }
 
@@ -766,7 +846,16 @@ export default function DataVista() {
               <div style={{ fontSize:17, fontWeight:700, color:T.text }}>{navItems.find(n=>n.id===tab)?.label}</div>
               {ds && <span style={{ fontSize:11, background:scheme.glow, color:scheme.accent, border:`1px solid ${scheme.accent}40`, padding:"2px 10px", borderRadius:20, fontWeight:600 }}>{ds.name}</span>}
             </div>
-            <div style={{ position:"relative" }} ref={settingsRef}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              {/* Refresh button */}
+              <button
+                onClick={handleRefresh}
+                title="Refresh page"
+                style={{ background:T.hover, border:`1px solid ${T.border}`, color:T.textSub, borderRadius:9, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:".2s", fontSize:16 }}>
+                <span className={isRefreshing?"spin":""} style={{ display:"inline-block", lineHeight:1 }}>↻</span>
+              </button>
+              {/* Settings */}
+              <div style={{ position:"relative" }} ref={settingsRef}>
               <button onClick={()=>setSettingsOpen(o=>!o)} style={{ background:settingsOpen?scheme.glow:T.hover, border:`1px solid ${settingsOpen?scheme.accent:T.border}`, color:settingsOpen?scheme.accent:T.textSub, borderRadius:9, width:38, height:38, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"4px", cursor:"pointer", transition:".2s" }}>
                 {[16,11,16].map((w,i)=><div key={i} style={{ width:w, height:2, background:"currentColor", borderRadius:2 }}/>)}
               </button>
@@ -794,6 +883,7 @@ export default function DataVista() {
                   </div>
                 </div>
               )}
+            </div>
             </div>
           </div>
 
@@ -825,6 +915,83 @@ export default function DataVista() {
                       </div>
                     </div>
                   ))}
+                </div>
+
+                {/* ── Dashboard Weather Widget ──────────────────────────── */}
+                <div style={{ ...cardStyle, marginBottom:18, padding:0, overflow:"hidden" }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"13px 18px", borderBottom:`1px solid ${T.cardBorder}` }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <span style={{ fontSize:18 }}>🌤</span>
+                      <div>
+                        <div style={{ fontWeight:700, color:T.text, fontSize:14 }}>Live Weather</div>
+                        <div style={{ fontSize:11, color:T.textMuted }}>{dashWeather ? dashWeather.city : "Loading…"}</div>
+                      </div>
+                    </div>
+                    {/* City selector */}
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      {DASH_WEATHER_CITIES.map(c=>(
+                        <button key={c.name} onClick={()=>fetchDashWeather(c)} style={{ padding:"3px 10px", borderRadius:20, border:`1.5px solid ${dashWeatherCity===c.name?scheme.accent:T.border2}`, background:dashWeatherCity===c.name?scheme.glow:T.surface, color:dashWeatherCity===c.name?scheme.accent:T.textMuted, fontSize:11, fontWeight:dashWeatherCity===c.name?700:500, fontFamily:"'Outfit',sans-serif", cursor:"pointer", transition:".15s" }}>{c.name}</button>
+                      ))}
+                      <button onClick={()=>fetchDashWeather()} title="Refresh weather" style={{ background:T.surface, border:`1px solid ${T.border2}`, color:T.textMuted, borderRadius:8, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13 }}>
+                        <span className={dashWeatherLoading?"spin":""}>↻</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {dashWeather ? (
+                    <div style={{ padding:"16px 20px", display:"grid", gridTemplateColumns:"auto 1fr auto", gap:20, alignItems:"center" }}>
+                      {/* Current temp */}
+                      <div style={{ textAlign:"center" }}>
+                        <div style={{ fontSize:52, fontWeight:800, color:T.text, fontFamily:"'JetBrains Mono',monospace", lineHeight:1 }}>{dashWeather.current?.temperature_2m?.toFixed(1) ?? "—"}°</div>
+                        <div style={{ fontSize:11, color:T.textMuted, marginTop:4, textTransform:"uppercase", letterSpacing:".06em" }}>Current · {dashWeather.city}</div>
+                        <div style={{ display:"flex", gap:12, justifyContent:"center", marginTop:10 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:12, color:T.textSub }}><span>💧</span>{dashWeather.humidity}%</div>
+                          <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:12, color:T.textSub }}><span>🌬</span>{dashWeather.wind} km/h</div>
+                        </div>
+                      </div>
+
+                      {/* 24-hour sparkline */}
+                      <div>
+                        <div style={{ fontSize:11, color:T.textMuted, marginBottom:6, textTransform:"uppercase", letterSpacing:".05em" }}>24-hour temperature</div>
+                        <ResponsiveContainer width="100%" height={80}>
+                          <AreaChart data={dashWeather.hourly.filter((_,i)=>i%2===0)} margin={{top:4,right:4,left:-28,bottom:0}}>
+                            <defs>
+                              <linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor={scheme.accent} stopOpacity={0.25}/>
+                                <stop offset="95%" stopColor={scheme.accent} stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <XAxis dataKey="time" tick={{ fontSize:9, fill:T.textMuted }} axisLine={false} tickLine={false} interval={5}/>
+                            <YAxis tick={{ fontSize:9, fill:T.textMuted }} axisLine={false} tickLine={false}/>
+                            <Tooltip content={<ChartTooltip isDark={isDark} accent={scheme.accent}/>}/>
+                            <Area type="monotone" dataKey="temperature_2m" stroke={scheme.accent} fill="url(#wg)" strokeWidth={2} dot={false} name="Temp °C"/>
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* 5-day forecast */}
+                      <div style={{ display:"flex", flexDirection:"column", gap:6, minWidth:160 }}>
+                        <div style={{ fontSize:11, color:T.textMuted, textTransform:"uppercase", letterSpacing:".05em", marginBottom:2 }}>5-day forecast</div>
+                        {dashWeather.daily.map((d,i)=>{
+                          const label = i===0?"Today":new Date(d.date+"T12:00:00").toLocaleDateString("en",{weekday:"short"});
+                          return (
+                            <div key={d.date} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"4px 0", borderBottom:i<4?`1px solid ${T.border}`:"" }}>
+                              <span style={{ fontSize:12, color:i===0?scheme.accent:T.textSub, fontWeight:i===0?700:400, minWidth:44 }}>{label}</span>
+                              <div style={{ display:"flex", gap:10 }}>
+                                <span style={{ fontSize:12, color:"#f87171", fontFamily:"monospace" }}>{d.high}°</span>
+                                <span style={{ fontSize:12, color:T.textMuted, fontFamily:"monospace" }}>{d.low}°</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ padding:28, display:"flex", alignItems:"center", justifyContent:"center", gap:10, color:T.textSub }}>
+                      <span className={dashWeatherLoading?"spin":"pulse"} style={{ fontSize:18, color:scheme.accent }}>↻</span>
+                      <span style={{ fontSize:13 }}>{dashWeatherLoading?"Fetching weather…":"Weather unavailable"}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Charts row */}
@@ -1223,7 +1390,7 @@ export default function DataVista() {
                     {label:"Statistics",icon:"∑",color:"#10b981",desc:"Descriptive stats for all columns",fn:()=>generateReport("Statistics")},
                     {label:"ML Performance",icon:"⬟",color:"#8b5cf6",desc:"Model metrics and evaluation",fn:()=>generateReport("ML")},
                     {label:"Hypothesis Test",icon:"⊛",color:"#f59e0b",desc:"Test stat, p-value, conclusion",fn:()=>generateReport("Hypothesis")},
-                    {label:"Full Pipeline",icon:"◎",color:"#ef4444",desc:"All completed steps combined",fn:()=>{generateReport("Data Quality");setTimeout(()=>generateReport("Statistics"),300);}},
+                    {label:"Full Pipeline",icon:"◎",color:"#ef4444",desc:"All 4 sections in a single file",fn:()=>generateReport("Full Pipeline")},
                     {label:"Dataset Export",icon:"↓",color:"#06b6d4",desc:"Export active dataset",fn:()=>ds?null:notify("Select a dataset first","error")},
                   ].map((r,i)=>(
                     <div key={i} style={{ ...cardStyle,cursor:"pointer",transition:"transform .15s,box-shadow .15s" }} onClick={r.fn} onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow=`0 8px 24px ${scheme.glow}`;}} onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";}}>
