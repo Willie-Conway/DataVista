@@ -1,0 +1,51 @@
+DataVista Full Pipeline Report
+Generated: 3/7/2026, 10:01:38 PM
+============================================================
+
+┌─ SECTION 1: DATA QUALITY ─────────────────────────────────
+
+Dataset: Weather_New York
+Rows: 168  Columns: 5
+
+  time: 0 missing (0.0%)
+  date: 0 missing (0.0%)
+  temperature_2m: 0 missing (0.0%)
+  relative_humidity_2m: 0 missing (0.0%)
+  wind_speed_10m: 0 missing (0.0%)
+
+┌─ SECTION 2: STATISTICS ───────────────────────────────────
+
+Dataset: Weather_New York
+
+Column: temperature_2m
+  Count:168 Mean:8.654 Median:9.000 Std:4.010 Min:1.300 Max:17.000
+
+Column: relative_humidity_2m
+  Count:168 Mean:76.375 Median:82.000 Std:20.319 Min:34.000 Max:100.000
+
+Column: wind_speed_10m
+  Count:168 Mean:14.566 Median:10.450 Std:9.377 Min:1.800 Max:44.300
+
+
+┌─ SECTION 3: ML MODEL ─────────────────────────────────────
+
+Algorithm: linear
+Target: temperature_2m
+
+  R²:      0.9596
+  RMSE:    1.4863
+  MAE:     1.0404
+  Samples: 168
+
+┌─ SECTION 4: HYPOTHESIS TEST ──────────────────────────────
+
+Test: Independent T-test
+Var1: temperature_2m
+Var2: relative_humidity_2m
+
+  Statistic:   -42.2549
+  P-value:     0.0002
+  Conclusion:  Reject H₀ (p < 0.05)
+
+============================================================
+End of Report
