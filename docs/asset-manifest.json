@@ -1,10 +1,10 @@
 {
   "files": {
-    "main.js": "/DataVista/static/js/main.a41cafda.js",
+    "main.js": "/DataVista/static/js/main.2cfed0c4.js",
     "index.html": "/DataVista/index.html",
-    "main.a41cafda.js.map": "/DataVista/static/js/main.a41cafda.js.map"
+    "main.2cfed0c4.js.map": "/DataVista/static/js/main.2cfed0c4.js.map"
   },
   "entrypoints": [
-    "static/js/main.a41cafda.js"
+    "static/js/main.2cfed0c4.js"
   ]
 }
